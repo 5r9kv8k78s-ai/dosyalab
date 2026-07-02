@@ -6,12 +6,12 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center px-6 py-16">
       <div className="mb-8 flex w-full items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">FormatFlow</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">DosyaLab</h1>
         <HealthStatus />
       </div>
 
       <p className="mb-10 max-w-xl text-center text-gray-500">
-        Pick a conversion below and drop in your file. FormatFlow converts it on the server and
+        Pick a conversion below and drop in your file. DosyaLab converts it on the server and
         sends the result straight back to your browser.
       </p>
 

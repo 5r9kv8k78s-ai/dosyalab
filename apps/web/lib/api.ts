@@ -35,7 +35,7 @@ export class ApiError extends Error {
 export async function getHealth(): Promise<HealthStatus> {
   const response = await fetch(`${API_BASE_URL}/api/v1/health`);
   if (!response.ok) {
-    throw new ApiError('Failed to reach FormatFlow API', response.status);
+    throw new ApiError('Failed to reach DosyaLab API', response.status);
   }
   return response.json();
 }
@@ -77,7 +77,7 @@ export function submitPdfToDocxConversion(
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the FormatFlow server. Check your connection.', 0));
+      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
     };
 
     const formData = new FormData();

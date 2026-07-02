@@ -1,7 +1,7 @@
 [project]
-name = "formatflow-api"
+name = "dosyalab-api"
 version = "0.1.0"
-description = "FormatFlow backend — FastAPI service for document conversion"
+description = "DosyaLab backend — FastAPI service for document conversion"
 requires-python = ">=3.12"
 
 [tool.ruff]

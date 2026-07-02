@@ -1,4 +1,4 @@
-# FormatFlow
+# DosyaLab
 
 A production-ready monorepo for a document conversion platform: a Next.js frontend
 for uploading files, and a FastAPI backend built to grow modular conversion

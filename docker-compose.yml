@@ -3,7 +3,7 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    container_name: formatflow-api
+    container_name: dosyalab-api
     restart: unless-stopped
     env_file:
       - ./apps/api/.env
@@ -14,7 +14,7 @@ services:
     volumes:
       - api_uploads:/app/storage
     networks:
-      - formatflow
+      - dosyalab
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 30s
@@ -26,7 +26,7 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
-    container_name: formatflow-web
+    container_name: dosyalab-web
     restart: unless-stopped
     env_file:
       - ./apps/web/.env
@@ -38,10 +38,10 @@ services:
       api:
         condition: service_healthy
     networks:
-      - formatflow
+      - dosyalab
 
 networks:
-  formatflow:
+  dosyalab:
     driver: bridge
 
 volumes:

@@ -30,7 +30,7 @@ class ConversionJob:
 class JobStore:
     """In-memory registry of conversion jobs.
 
-    Single-process only — fine for this deployment, but if FormatFlow ever
+    Single-process only — fine for this deployment, but if DosyaLab ever
     runs multiple API replicas, this needs to move to a shared store (e.g.
     Redis) so status polling and downloads hit the replica that owns the job.
     """
