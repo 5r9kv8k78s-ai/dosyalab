@@ -42,6 +42,7 @@ MERGE_PDF_SLUG = "merge-pdf"
 SPLIT_PDF_SLUG = "split-pdf"
 COMPRESS_PDF_SLUG = "compress-pdf"
 ROTATE_PDF_SLUG = "rotate-pdf"
+DELETE_PAGES_SLUG = "delete-pages"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -400,6 +401,54 @@ async def submit_rotate_pdf_job(
             "job_id": job.id,
             "converter_slug": ROTATE_PDF_SLUG,
             "rotation": rotation,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_delete_pages_job(
+    file: UploadFile, pages: str, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create a delete-pages job for it.
+
+    `pages` is a required, 1-indexed comma-separated list — at least one
+    page must be selected, and deleting every page is rejected.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(saved_path)
+        zero_indexed_pages = parse_page_list(pages, field_name="pages")
+        if not zero_indexed_pages:
+            raise PdfValidationError("At least one page must be specified.")
+        validate_pages_in_range(zero_indexed_pages, page_count, field_name="pages")
+        if len(set(zero_indexed_pages)) >= page_count:
+            raise PdfValidationError("Cannot delete all pages from a PDF.")
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(json.dumps({"pages": zero_indexed_pages}))
+
+    download_filename = f"{Path(original_filename).stem}_edited.pdf"
+    job = job_store.create(
+        module_slug=DELETE_PAGES_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": DELETE_PAGES_SLUG,
             "size_bytes": size_bytes,
         },
     )
