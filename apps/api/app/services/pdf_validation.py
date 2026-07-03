@@ -50,6 +50,19 @@ def validate_pdf_size(size_bytes: int, max_size_mb: int) -> None:
         raise PdfValidationError(f"File exceeds the {max_size_mb}MB size limit.", status_code=413)
 
 
+def inspect_pdf_allow_encrypted(path: Path) -> None:
+    """Confirms a file is openable as a PDF, without rejecting encrypted
+    documents the way `inspect_pdf` does — used only by the unlock-pdf
+    feature, whose whole point is to accept an encrypted PDF as input. A
+    wrong password is caught later, during the actual unlock attempt.
+    """
+    try:
+        doc = fitz.open(path)
+    except Exception as exc:
+        raise PdfValidationError("The uploaded file is not a valid or is a corrupted PDF.") from exc
+    doc.close()
+
+
 def inspect_pdf(path: Path) -> int:
     """Open the PDF to confirm it is readable and unencrypted.
 

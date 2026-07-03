@@ -26,6 +26,7 @@ from app.services.pdf_params import parse_page_list, validate_pages_in_range
 from app.services.pdf_validation import (
     PdfValidationError,
     inspect_pdf,
+    inspect_pdf_allow_encrypted,
     secure_filename,
     validate_pdf_extension,
     validate_pdf_size,
@@ -47,6 +48,7 @@ EXTRACT_PAGES_SLUG = "extract-pages"
 REORDER_PAGES_SLUG = "reorder-pages"
 WATERMARK_PDF_SLUG = "watermark-pdf"
 PROTECT_PDF_SLUG = "protect-pdf"
+UNLOCK_PDF_SLUG = "unlock-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -648,6 +650,54 @@ async def submit_protect_pdf_job(
         extra={
             "job_id": job.id,
             "converter_slug": PROTECT_PDF_SLUG,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_unlock_pdf_job(
+    file: UploadFile, password: str, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create an unlock job for it.
+
+    Unlike every other PDF-accepting submit function, this one uses
+    `inspect_pdf_allow_encrypted` instead of `inspect_pdf` — accepting an
+    encrypted PDF is the entire point of this feature. A wrong password is
+    caught later, inside the job, by `PdfEngine.unlock_pdf` itself, and
+    surfaces as a failed job rather than a validation error here.
+    """
+    if not password:
+        raise PdfValidationError("A password is required to unlock a PDF.")
+
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        inspect_pdf_allow_encrypted(saved_path)
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(json.dumps({"password": password}))
+
+    download_filename = f"{Path(original_filename).stem}_unlocked.pdf"
+    job = job_store.create(
+        module_slug=UNLOCK_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": UNLOCK_PDF_SLUG,
             "size_bytes": size_bytes,
         },
     )
