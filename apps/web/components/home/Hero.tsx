@@ -13,7 +13,7 @@ export function Hero() {
   const { t } = useTranslation();
 
   return (
-    <section className="mx-auto max-w-2xl px-6 pb-16 pt-20 text-center sm:pt-28">
+    <section className="mx-auto max-w-2xl px-6 pb-6 pt-10 text-center sm:pt-14">
       <motion.h1
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -27,7 +27,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.08, ease: 'easeOut' }}
-        className="text-body sm:text-heroSubtitle text-muted mx-auto mt-5 max-w-xl"
+        className="text-body sm:text-heroSubtitle text-muted mx-auto mt-2 max-w-xl"
       >
         {t.hero.subtitle}
       </motion.p>
@@ -36,7 +36,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.16, ease: 'easeOut' }}
-        className="mt-8 flex flex-wrap items-center justify-center gap-3"
+        className="mt-4 flex flex-wrap items-center justify-center gap-3"
       >
         {BADGES.map((badge) => (
           <span

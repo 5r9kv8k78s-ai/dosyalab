@@ -62,7 +62,7 @@ const config: Config = {
       // text-body, text-small, text-button, plus the redesign's dedicated
       // hero/heroSubtitle/cardTitle sizes (56/22/18).
       fontSize: {
-        hero: ['3.5rem', { lineHeight: '1.08', fontWeight: '800', letterSpacing: '-0.02em' }],
+        hero: ['2.875rem', { lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em' }],
         display: ['3rem', { lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em' }],
         h1: ['2.25rem', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.01em' }],
         h2: ['1.875rem', { lineHeight: '1.25', fontWeight: '700' }],

@@ -19,7 +19,7 @@ export function CategorySelector({
     <div
       role="radiogroup"
       aria-label={t.categories.sectionAriaLabel}
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
     >
       {FILE_CATEGORIES.map((category) => {
         const isActive = category === activeCategory;
@@ -33,11 +33,11 @@ export function CategorySelector({
             whileHover={{ scale: 1.02 }}
             transition={{ duration: 0.18 }}
             className={cn(
-              'focus-ring bg-surface duration-base flex flex-col items-center gap-3 rounded-2xl border px-6 py-8 shadow-sm transition-shadow hover:shadow-lg',
+              'focus-ring bg-surface duration-base flex flex-col items-center gap-2 rounded-2xl border px-6 py-5 shadow-sm transition-shadow hover:shadow-lg',
               isActive ? 'border-primary ring-primary ring-1' : 'border-border',
             )}
           >
-            <FileTypeIcon type={category} size={48} />
+            <FileTypeIcon type={category} size={40} />
             <span className="text-cardTitle text-foreground font-semibold">
               {t.categories[category]}
             </span>

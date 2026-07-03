@@ -136,10 +136,10 @@ export function ConversionFlow() {
   const showUploadArea = state.stage === 'idle' && categoryHasTools;
 
   return (
-    <section id="tools" className="mx-auto max-w-[1200px] px-6 py-8">
+    <section id="tools" className="mx-auto max-w-[1200px] px-6 pb-8 pt-2">
       <CategorySelector activeCategory={category} onSelect={handleCategorySelect} />
 
-      <div className="mt-6">
+      <div className="mt-4">
         <ToolChips
           category={category}
           selectedSlug={selectedTool.slug}
@@ -147,7 +147,7 @@ export function ConversionFlow() {
         />
       </div>
 
-      <div className="mx-auto mt-8 max-w-xl">
+      <div className="mx-auto mt-5 max-w-xl">
         <AnimatePresence mode="wait">
           {showUploadArea && (
             <motion.div
