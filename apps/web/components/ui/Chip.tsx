@@ -19,7 +19,7 @@ export function Chip({ selected, onClick, children, className }: ChipProps) {
       aria-checked={selected}
       onClick={onClick}
       className={cn(
-        'focus-ring text-small duration-base whitespace-nowrap rounded-full border px-4 py-2 font-medium transition-colors',
+        'focus-ring text-small duration-base flex h-10 items-center whitespace-nowrap rounded-full border px-5 font-medium transition-all hover:shadow-sm',
         selected
           ? 'border-primary bg-primary text-primary-foreground'
           : 'border-border bg-surface text-foreground hover:bg-background',

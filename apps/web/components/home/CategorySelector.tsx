@@ -30,14 +30,14 @@ export function CategorySelector({
             role="radio"
             aria-checked={isActive}
             onClick={() => onSelect(category)}
-            whileHover={{ scale: 1.02 }}
+            whileHover={{ y: -3, scale: 1.02 }}
             transition={{ duration: 0.18 }}
             className={cn(
-              'focus-ring bg-surface duration-base flex flex-col items-center gap-2 rounded-2xl border px-6 py-5 shadow-sm transition-shadow hover:shadow-lg',
-              isActive ? 'border-primary ring-primary ring-1' : 'border-border',
+              'focus-ring duration-base flex flex-col items-center gap-2 rounded-[28px] border px-6 py-5 shadow-sm transition-shadow hover:shadow-xl',
+              isActive ? 'border-primary bg-primary/[0.08]' : 'border-border bg-surface',
             )}
           >
-            <FileTypeIcon type={category} size={40} />
+            <FileTypeIcon type={category} size={44} />
             <span className="text-cardTitle text-foreground font-semibold">
               {t.categories[category]}
             </span>

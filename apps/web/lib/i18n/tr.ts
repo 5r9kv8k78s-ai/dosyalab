@@ -164,6 +164,7 @@ export const tr = {
     mergeDropZoneAriaLabel: 'Birleştirmek için iki veya daha fazla PDF sürükleyin veya göz atın',
     mergeHint: 'İki veya daha fazla PDF — her biri en fazla 100MB',
     selectedCount: (count: number) => `${count} PDF seçildi — gerekirse sırasını değiştirin`,
+    selectToolFirst: 'Önce bir araç seçin',
   },
 
   progress: {
@@ -206,7 +207,7 @@ export const tr = {
     tryAgain: 'Tekrar Dene',
     download: 'İndir',
     convertAnotherFile: 'Başka bir dosya dönüştür',
-    newConversion: 'Yeni Dönüştürme',
+    newConversion: 'Yeni dosya dönüştür',
     mergePdfs: "PDF'leri Birleştir",
     mergeMoreFiles: 'Daha fazla dosya birleştir',
     moveFileUp: (fileName: string) => `${fileName} dosyasını yukarı taşı`,
@@ -215,7 +216,8 @@ export const tr = {
   },
 
   success: {
-    title: 'Dosyanız hazır.',
+    title: 'Dönüştürme tamamlandı',
+    subtitle: 'Dosyanız başarıyla hazırlandı.',
   },
 
   status: {

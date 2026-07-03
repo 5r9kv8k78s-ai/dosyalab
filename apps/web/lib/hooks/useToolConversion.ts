@@ -52,6 +52,7 @@ interface ConversionState {
   stage: ConversionStage;
   uploadProgress: number;
   resultFilename: string | null;
+  resultFileSize: number | null;
   errorMessage: string | null;
 }
 
@@ -59,6 +60,7 @@ const initialState: ConversionState = {
   stage: 'idle',
   uploadProgress: 0,
   resultFilename: null,
+  resultFileSize: null,
   errorMessage: null,
 };
 
@@ -112,7 +114,12 @@ export function useToolConversion(tool: ToolConfig) {
               if (!isMountedRef.current) return;
               resultBlobRef.current = blob;
               triggerBrowserDownload(blob, job.filename);
-              setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
+              setState((prev) => ({
+                ...prev,
+                stage: 'completed',
+                resultFilename: job.filename,
+                resultFileSize: blob.size,
+              }));
             } catch (error) {
               fail(friendlyMessageFor(error, t.errors.somethingWrong));
             }

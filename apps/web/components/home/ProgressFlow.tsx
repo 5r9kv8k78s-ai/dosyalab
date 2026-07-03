@@ -45,7 +45,10 @@ export function ProgressFlow({
 
   return (
     <div className="w-full" aria-live="polite">
-      <div className="bg-border h-2 w-full overflow-hidden rounded-full">
+      <p className="text-small text-muted mb-2 text-right font-medium tabular-nums">
+        {Math.round(barWidth)}%
+      </p>
+      <div className="bg-border h-3 w-full overflow-hidden rounded-full">
         <motion.div
           className="bg-primary h-full rounded-full"
           animate={{ width: `${barWidth}%` }}

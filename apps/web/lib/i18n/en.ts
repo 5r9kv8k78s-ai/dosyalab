@@ -162,6 +162,7 @@ export const en: Translations = {
     mergeDropZoneAriaLabel: 'Drop two or more PDFs here, or click to browse, to merge them',
     mergeHint: 'Two or more PDFs — up to 100MB each',
     selectedCount: (count: number) => `${count} PDFs selected — reorder if needed`,
+    selectToolFirst: 'Select a tool first',
   },
 
   progress: {
@@ -204,7 +205,7 @@ export const en: Translations = {
     tryAgain: 'Try Again',
     download: 'Download',
     convertAnotherFile: 'Convert another file',
-    newConversion: 'New Conversion',
+    newConversion: 'Convert a new file',
     mergePdfs: 'Merge PDFs',
     mergeMoreFiles: 'Merge more files',
     moveFileUp: (fileName: string) => `Move ${fileName} up`,
@@ -213,7 +214,8 @@ export const en: Translations = {
   },
 
   success: {
-    title: 'Your file is ready.',
+    title: 'Conversion complete',
+    subtitle: 'Your file was prepared successfully.',
   },
 
   status: {

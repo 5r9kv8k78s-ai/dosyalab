@@ -149,6 +149,19 @@ export function ConversionFlow() {
 
       <div className="mx-auto mt-5 max-w-xl">
         <AnimatePresence mode="wait">
+          {!categoryHasTools && state.stage === 'idle' && (
+            <motion.div
+              key="select-tool-first"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="border-border text-muted flex min-h-[220px] items-center justify-center rounded-[28px] border-2 border-dashed"
+            >
+              <p className="text-small font-medium">{t.upload.selectToolFirst}</p>
+            </motion.div>
+          )}
+
           {showUploadArea && (
             <motion.div
               key="upload"
@@ -206,7 +219,12 @@ export function ConversionFlow() {
               transition={{ duration: 0.18 }}
               className="border-border bg-surface rounded-[28px] border px-8"
             >
-              <SuccessScreen onDownloadAgain={redownload} onNewConversion={handleTryAgain} />
+              <SuccessScreen
+                filename={state.resultFilename}
+                fileSize={state.resultFileSize}
+                onDownloadAgain={redownload}
+                onNewConversion={handleTryAgain}
+              />
             </motion.div>
           )}
 
