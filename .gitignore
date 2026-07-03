@@ -1,49 +1,10 @@
-# Dependencies
 node_modules/
-.pnpm-store/
-
-# Next.js
-apps/web/.next/
-apps/web/out/
-apps/web/next-env.d.ts
-
-# Production builds
-build/
-dist/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-env/
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-
-# Uploaded files (runtime storage)
-apps/api/uploads/
-apps/api/storage/
-
-# Env files
+.next/
 .env
 .env.local
-.env.*.local
-!.env.example
-!apps/**/.env.example
-
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Editor / OS
 .DS_Store
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# Docker
-docker-compose.override.yml
+.claude/
+__pycache__/
+*.pyc
+coverage/
+dist/
