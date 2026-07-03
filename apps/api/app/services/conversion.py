@@ -22,6 +22,7 @@ from app.services.image_validation import (
     validate_image_size,
 )
 from app.services.jobs import ConversionJob, JobStatus, job_store
+from app.services.pdf_params import parse_page_list, validate_pages_in_range
 from app.services.pdf_validation import (
     PdfValidationError,
     inspect_pdf,
@@ -40,6 +41,7 @@ IMAGES_TO_PDF_SLUG = "images-to-pdf"
 MERGE_PDF_SLUG = "merge-pdf"
 SPLIT_PDF_SLUG = "split-pdf"
 COMPRESS_PDF_SLUG = "compress-pdf"
+ROTATE_PDF_SLUG = "rotate-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -344,6 +346,60 @@ async def submit_compress_pdf_job(file: UploadFile, settings: Settings) -> Conve
             "job_id": job.id,
             "converter_slug": COMPRESS_PDF_SLUG,
             "pages": page_count,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_rotate_pdf_job(
+    file: UploadFile, rotation: int, pages: str | None, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create a rotation job for it.
+
+    Follows the same directory + `params.json` convention as
+    `submit_split_pdf_job` — `pages` is 1-indexed from the API's
+    perspective and parsed/validated via `app.services.pdf_params` before
+    being stored 0-indexed for `PdfEngine.rotate_pdf`. `None` rotates every
+    page.
+    """
+    if rotation % 90 != 0:
+        raise PdfValidationError("rotation must be a multiple of 90 degrees.")
+
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(saved_path)
+        zero_indexed_pages = parse_page_list(pages, field_name="pages")
+        if zero_indexed_pages is not None:
+            validate_pages_in_range(zero_indexed_pages, page_count, field_name="pages")
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(
+        json.dumps({"rotation": rotation, "pages": zero_indexed_pages})
+    )
+
+    download_filename = f"{Path(original_filename).stem}_rotated.pdf"
+    job = job_store.create(
+        module_slug=ROTATE_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": ROTATE_PDF_SLUG,
+            "rotation": rotation,
             "size_bytes": size_bytes,
         },
     )

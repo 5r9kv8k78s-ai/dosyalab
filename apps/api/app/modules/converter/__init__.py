@@ -15,6 +15,7 @@ from app.modules.converter import images_to_pdf as _images_to_pdf  # noqa: E402,
 from app.modules.converter import merge_pdf as _merge_pdf  # noqa: E402,F401
 from app.modules.converter import pdf_to_docx as _pdf_to_docx  # noqa: E402,F401
 from app.modules.converter import pdf_to_xlsx as _pdf_to_xlsx  # noqa: E402,F401
+from app.modules.converter import rotate_pdf as _rotate_pdf  # noqa: E402,F401
 from app.modules.converter import split_pdf as _split_pdf  # noqa: E402,F401
 from app.modules.converter.base import ConversionModule
 from app.modules.converter.registry import get_converter, list_converters, register_converter
