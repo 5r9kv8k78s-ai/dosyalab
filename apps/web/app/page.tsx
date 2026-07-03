@@ -1,6 +1,7 @@
 import { ShieldCheck } from 'lucide-react';
 import { ComingSoonCard } from '@/components/conversions/ComingSoonCard';
 import { PdfToWordCard } from '@/components/conversions/PdfToWordCard';
+import { WordToPdfCard } from '@/components/conversions/WordToPdfCard';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 
 export default function Home() {
@@ -10,18 +11,17 @@ export default function Home() {
         <h1 className="text-h1 sm:text-display">
           Belgelerinizi hızlı, güvenli ve ücretsiz dönüştürün.
         </h1>
-        <p className="mt-4 text-body text-muted sm:text-h3 sm:font-normal">
+        <p className="text-body text-muted sm:text-h3 mt-4 sm:font-normal">
           PDF, Word, Excel ve görsellerinizi saniyeler içinde dönüştürün.
         </p>
       </section>
 
-      <section className="mt-12 grid w-full grid-cols-1 gap-4 sm:grid-cols-2" aria-label="Available conversions">
+      <section
+        className="mt-12 grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
+        aria-label="Available conversions"
+      >
         <PdfToWordCard />
-        <ComingSoonCard
-          title="Word → PDF"
-          description="Convert .docx files into shareable PDFs"
-          icon={<FileTypeIcon type="word" size={40} />}
-        />
+        <WordToPdfCard />
         <ComingSoonCard
           title="Image → PDF"
           description="Combine images into a single PDF"
@@ -34,8 +34,8 @@ export default function Home() {
         />
       </section>
 
-      <section className="mt-12 flex w-full max-w-2xl items-center gap-3 rounded-lg border border-primary/20 bg-primary-light px-5 py-4">
-        <ShieldCheck className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+      <section className="border-primary/20 bg-primary-light mt-12 flex w-full max-w-2xl items-center gap-3 rounded-lg border px-5 py-4">
+        <ShieldCheck className="text-primary h-5 w-5 shrink-0" aria-hidden="true" />
         <p className="text-small text-primary">
           Dosyalarınız işlem tamamlandıktan sonra otomatik silinir.
         </p>

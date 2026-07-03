@@ -11,6 +11,7 @@ from app.services.jobs import job_store
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_PDF_PATH = FIXTURES_DIR / "sample.pdf"
+SAMPLE_DOCX_PATH = FIXTURES_DIR / "sample.docx"
 
 
 @pytest.fixture
@@ -51,6 +52,37 @@ def encrypted_pdf_bytes(sample_pdf_path: Path, tmp_path: Path) -> bytes:
     )
     doc.close()
     return output.read_bytes()
+
+
+@pytest.fixture
+def sample_docx_path() -> Path:
+    return SAMPLE_DOCX_PATH
+
+
+@pytest.fixture
+def sample_docx_bytes() -> bytes:
+    return SAMPLE_DOCX_PATH.read_bytes()
+
+
+@pytest.fixture
+def corrupted_docx_bytes(sample_docx_bytes: bytes) -> bytes:
+    # A real DOCX's opening bytes only — not enough to form a valid ZIP
+    # central directory, so python-docx fails to open it (verified:
+    # truncating to 50 bytes raises zipfile.BadZipFile). Derived from the
+    # real fixture, not synthetic content.
+    return sample_docx_bytes[:50]
+
+
+@pytest.fixture
+def encrypted_docx_bytes() -> bytes:
+    # Password-protected OOXML files are wrapped in an MS-CFB container and
+    # start with this fixed 8-byte signature instead of the ZIP local file
+    # header — see docx_validation._OLE_COMPOUND_FILE_SIGNATURE. Genuinely
+    # MS-OFFCRYPTO-encrypting a real docx requires tooling this project
+    # doesn't otherwise depend on (Word/LibreOffice), so this fixture tests
+    # the signature-detection path directly against the real, documented
+    # magic bytes rather than a full encrypted document.
+    return b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -6,7 +7,12 @@ from starlette.background import BackgroundTask
 
 from app.core.config import Settings, get_settings
 from app.schemas.convert import ConvertJobCreated, ConvertJobStatus
-from app.services.conversion import run_conversion_job, submit_pdf_to_docx_job
+from app.services.conversion import (
+    run_conversion_job,
+    submit_docx_to_pdf_job,
+    submit_pdf_to_docx_job,
+)
+from app.services.docx_validation import DocxValidationError
 from app.services.jobs import JobStatus, job_store
 from app.services.pdf_validation import PdfValidationError
 
@@ -14,7 +20,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/convert", tags=["convert"])
 
-DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+# Keyed by output file suffix rather than converter slug, so the shared
+# download endpoint below stays correct for any future format without
+# needing to know about individual converters.
+_MEDIA_TYPE_BY_SUFFIX = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pdf": "application/pdf",
+}
+_DEFAULT_MEDIA_TYPE = "application/octet-stream"
 
 
 @router.post(
@@ -30,6 +43,29 @@ async def convert_pdf_to_docx(
     try:
         job = await submit_pdf_to_docx_job(file, settings)
     except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/docx-to-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_docx_to_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_docx_to_pdf_job(file, settings)
+    except DocxValidationError as exc:
         logger.warning(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
@@ -74,9 +110,13 @@ def download_conversion_result(job_id: str) -> FileResponse:
     return FileResponse(
         path=job.output_path,
         filename=job.download_filename,
-        media_type=DOCX_MEDIA_TYPE,
+        media_type=_media_type_for(job.output_path),
         background=BackgroundTask(_cleanup_after_download, job_id),
     )
+
+
+def _media_type_for(path: Path) -> str:
+    return _MEDIA_TYPE_BY_SUFFIX.get(path.suffix.lower(), _DEFAULT_MEDIA_TYPE)
 
 
 def _cleanup_after_download(job_id: str) -> None:

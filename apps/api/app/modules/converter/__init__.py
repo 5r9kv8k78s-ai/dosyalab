@@ -9,6 +9,7 @@ logic. See `base.py` for the interface new modules must implement.
 # Importing a module here triggers its module-level `register_converter(...)`
 # call, making it available in the registry as soon as this package is
 # imported. New conversion modules join this list — no other wiring needed.
+from app.modules.converter import docx_to_pdf as _docx_to_pdf  # noqa: E402,F401
 from app.modules.converter import pdf_to_docx as _pdf_to_docx  # noqa: E402,F401
 from app.modules.converter.base import ConversionModule
 from app.modules.converter.registry import get_converter, list_converters, register_converter

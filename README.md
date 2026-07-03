@@ -58,6 +58,32 @@ is approximated; it always reaches 100% only on real completion. It also has no
 "Heading N" style mapping — headings survive as bold/larger-font runs on `Normal`
 paragraphs rather than semantic Word heading styles.
 
+### Word → PDF
+
+The second conversion module (`apps/api/app/modules/converter/docx_to_pdf.py`), reusing
+the exact same job/status/download endpoints as PDF → Word — only the submission
+endpoint and the validation/converter pair are format-specific.
+
+- `POST /api/v1/convert/docx-to-pdf` — multipart upload, rejects non-DOCX files,
+  files over 100MB, and encrypted or corrupted DOCX files. Returns `202` with a `job_id`.
+- `GET /api/v1/convert/jobs/{job_id}` and `GET /api/v1/convert/jobs/{job_id}/download` —
+  the same shared endpoints PDF → Word uses; the download endpoint picks the right
+  `Content-Type` from the output file's extension.
+
+Conversion runs through an HTML intermediate — [mammoth](https://github.com/mwilliamson/python-mammoth)
+extracts the DOCX to HTML (preserving headings, paragraphs, images, and basic
+table structure), then [xhtml2pdf](https://github.com/xhtml2pdf/xhtml2pdf) renders
+that HTML to PDF. Both are pure Python (xhtml2pdf sits on top of `reportlab`), so
+no system dependency like LibreOffice is required in the container.
+
+xhtml2pdf renders with the standard PDF "Helvetica" font unless a font-family is
+set, and mammoth's HTML output doesn't set one — standard PDF fonts don't cover
+Turkish characters (ş, ı, İ, ğ), which was verified empirically (text like
+"İşlemini" rendered as "Ilemini" until fixed). `docx_to_pdf.py` fixes this by
+registering the Unicode TTF font reportlab already bundles (Vera) as the
+Helvetica/Times New Roman replacement, so all text goes through it regardless of
+what the source HTML specifies.
+
 ## Getting started (local, no Docker)
 
 ### Backend

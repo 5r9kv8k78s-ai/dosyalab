@@ -6,6 +6,12 @@ from fastapi import UploadFile
 
 from app.core.config import Settings
 from app.modules.converter import get_converter
+from app.services.docx_validation import (
+    DocxValidationError,
+    inspect_docx,
+    validate_docx_extension,
+    validate_docx_size,
+)
 from app.services.jobs import ConversionJob, JobStatus, job_store
 from app.services.pdf_validation import (
     PdfValidationError,
@@ -19,6 +25,7 @@ from app.services.storage import StorageService
 logger = logging.getLogger(__name__)
 
 PDF_TO_DOCX_SLUG = "pdf-to-docx"
+DOCX_TO_PDF_SLUG = "docx-to-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -64,6 +71,43 @@ async def submit_pdf_to_docx_job(file: UploadFile, settings: Settings) -> Conver
     return job
 
 
+async def submit_docx_to_pdf_job(file: UploadFile, settings: Settings) -> ConversionJob:
+    """Validate an uploaded DOCX and create a conversion job for it.
+
+    Mirrors `submit_pdf_to_docx_job` above — same storage/validation/job-store
+    pattern, swapped for DOCX-specific checks.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_docx_extension(original_filename)
+
+    storage = StorageService(upload_dir=settings.convert_upload_dir)
+    _file_id, source_path, size_bytes = await storage.save(file)
+
+    try:
+        validate_docx_size(size_bytes, settings.max_convert_upload_size_mb)
+        paragraph_count = inspect_docx(source_path)
+    except DocxValidationError:
+        source_path.unlink(missing_ok=True)
+        raise
+
+    download_filename = f"{Path(original_filename).stem}.pdf"
+    job = job_store.create(
+        module_slug=DOCX_TO_PDF_SLUG,
+        source_path=source_path,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": DOCX_TO_PDF_SLUG,
+            "paragraphs": paragraph_count,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking progress."""
     job = job_store.get(job_id)
@@ -87,7 +131,7 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         job_store.update(
             job_id,
             status=JobStatus.FAILED,
-            error="Conversion failed. The PDF may use unsupported features — try a different file.",
+            error="Conversion failed. The file may use unsupported features — try a different one.",
         )
         logger.exception("convert.job_failed", extra={"job_id": job_id})
     finally:
