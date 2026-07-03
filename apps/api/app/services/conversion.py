@@ -39,6 +39,7 @@ PDF_TO_XLSX_SLUG = "pdf-to-xlsx"
 IMAGES_TO_PDF_SLUG = "images-to-pdf"
 MERGE_PDF_SLUG = "merge-pdf"
 SPLIT_PDF_SLUG = "split-pdf"
+COMPRESS_PDF_SLUG = "compress-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -305,6 +306,44 @@ async def submit_split_pdf_job(
             "job_id": job.id,
             "converter_slug": SPLIT_PDF_SLUG,
             "pages_per_file": pages_per_file,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_compress_pdf_job(file: UploadFile, settings: Settings) -> ConversionJob:
+    """Validate an uploaded PDF and create a compression job for it.
+
+    Input format is the same as `submit_pdf_to_docx_job` (a single PDF, no
+    extra parameters), so this reuses the same PDF validation helpers
+    directly — only the module slug and output filename differ.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    storage = StorageService(upload_dir=settings.convert_upload_dir)
+    _file_id, source_path, size_bytes = await storage.save(file)
+
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(source_path)
+    except PdfValidationError:
+        source_path.unlink(missing_ok=True)
+        raise
+
+    download_filename = f"{Path(original_filename).stem}_compressed.pdf"
+    job = job_store.create(
+        module_slug=COMPRESS_PDF_SLUG,
+        source_path=source_path,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": COMPRESS_PDF_SLUG,
+            "pages": page_count,
             "size_bytes": size_bytes,
         },
     )

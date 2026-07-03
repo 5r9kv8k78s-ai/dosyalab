@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.schemas.convert import ConvertJobCreated, ConvertJobStatus
 from app.services.conversion import (
     run_conversion_job,
+    submit_compress_pdf_job,
     submit_docx_to_pdf_job,
     submit_images_to_pdf_job,
     submit_merge_pdf_job,
@@ -172,6 +173,29 @@ async def convert_split_pdf(
 ) -> ConvertJobCreated:
     try:
         job = await submit_split_pdf_job(file, pages_per_file, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/compress-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_compress_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_compress_pdf_job(file, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",
