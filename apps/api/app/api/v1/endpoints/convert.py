@@ -11,6 +11,7 @@ from app.services.conversion import (
     run_conversion_job,
     submit_docx_to_pdf_job,
     submit_images_to_pdf_job,
+    submit_merge_pdf_job,
     submit_pdf_to_docx_job,
     submit_pdf_to_xlsx_job,
 )
@@ -116,6 +117,32 @@ async def convert_images_to_pdf(
     try:
         job = await submit_images_to_pdf_job(files, settings)
     except ImageValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={
+                "upload_filename": files[0].filename if files else None,
+                "reason": exc.message,
+            },
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/merge-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_merge_pdf(
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile],
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_merge_pdf_job(files, settings)
+    except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",
             extra={

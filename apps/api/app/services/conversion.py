@@ -36,6 +36,7 @@ PDF_TO_DOCX_SLUG = "pdf-to-docx"
 DOCX_TO_PDF_SLUG = "docx-to-pdf"
 PDF_TO_XLSX_SLUG = "pdf-to-xlsx"
 IMAGES_TO_PDF_SLUG = "images-to-pdf"
+MERGE_PDF_SLUG = "merge-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -205,6 +206,54 @@ async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) 
             "job_id": job.id,
             "converter_slug": IMAGES_TO_PDF_SLUG,
             "image_count": len(files),
+            "size_bytes": total_size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> ConversionJob:
+    """Validate two or more uploaded PDFs and create a merge job for them.
+
+    Mirrors `submit_images_to_pdf_job`'s directory-based ordering pattern —
+    files are saved into a per-job directory with a zero-padded index prefix
+    so `MergePdfConverter.convert` can reproduce upload order via a plain
+    directory listing.
+    """
+    if len(files) < 2:
+        raise PdfValidationError("At least two PDF files are required to merge.")
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    total_size_bytes = 0
+    try:
+        for index, file in enumerate(files):
+            original_filename = secure_filename(file.filename)
+            validate_pdf_extension(original_filename)
+
+            _file_id, saved_path, size_bytes = await storage.save(file)
+            validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+            inspect_pdf(saved_path)
+
+            ordered_path = job_upload_dir / f"{index:04d}{saved_path.suffix}"
+            saved_path.rename(ordered_path)
+            total_size_bytes += size_bytes
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    job = job_store.create(
+        module_slug=MERGE_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename="merged.pdf",
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": MERGE_PDF_SLUG,
+            "file_count": len(files),
             "size_bytes": total_size_bytes,
         },
     )
