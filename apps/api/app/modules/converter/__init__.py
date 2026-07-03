@@ -20,6 +20,7 @@ from app.modules.converter import pdf_to_xlsx as _pdf_to_xlsx  # noqa: E402,F401
 from app.modules.converter import reorder_pages as _reorder_pages  # noqa: E402,F401
 from app.modules.converter import rotate_pdf as _rotate_pdf  # noqa: E402,F401
 from app.modules.converter import split_pdf as _split_pdf  # noqa: E402,F401
+from app.modules.converter import watermark_pdf as _watermark_pdf  # noqa: E402,F401
 from app.modules.converter.base import ConversionModule
 from app.modules.converter.registry import get_converter, list_converters, register_converter
 

@@ -20,6 +20,7 @@ from app.services.conversion import (
     submit_reorder_pages_job,
     submit_rotate_pdf_job,
     submit_split_pdf_job,
+    submit_watermark_pdf_job,
 )
 from app.services.docx_validation import DocxValidationError
 from app.services.image_validation import ImageValidationError
@@ -297,6 +298,33 @@ async def convert_reorder_pages(
 ) -> ConvertJobCreated:
     try:
         job = await submit_reorder_pages_job(file, order, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/watermark-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_watermark_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    text: str = Form(...),
+    opacity: float = Form(0.3),
+    font_size: int = Form(40),
+    rotation: float = Form(45.0),
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_watermark_pdf_job(file, text, opacity, font_size, rotation, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",

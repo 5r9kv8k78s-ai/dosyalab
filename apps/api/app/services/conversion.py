@@ -45,6 +45,7 @@ ROTATE_PDF_SLUG = "rotate-pdf"
 DELETE_PAGES_SLUG = "delete-pages"
 EXTRACT_PAGES_SLUG = "extract-pages"
 REORDER_PAGES_SLUG = "reorder-pages"
+WATERMARK_PDF_SLUG = "watermark-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -550,6 +551,54 @@ async def submit_reorder_pages_job(
         extra={
             "job_id": job.id,
             "converter_slug": REORDER_PAGES_SLUG,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_watermark_pdf_job(
+    file: UploadFile,
+    text: str,
+    opacity: float,
+    font_size: int,
+    rotation: float,
+    settings: Settings,
+) -> ConversionJob:
+    """Validate an uploaded PDF and create a watermark job for it."""
+    if not text.strip():
+        raise PdfValidationError("Watermark text must not be empty.")
+
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        inspect_pdf(saved_path)
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(
+        json.dumps({"text": text, "opacity": opacity, "font_size": font_size, "rotation": rotation})
+    )
+
+    download_filename = f"{Path(original_filename).stem}_watermarked.pdf"
+    job = job_store.create(
+        module_slug=WATERMARK_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": WATERMARK_PDF_SLUG,
             "size_bytes": size_bytes,
         },
     )
