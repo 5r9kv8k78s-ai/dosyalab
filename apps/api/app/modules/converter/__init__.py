@@ -12,6 +12,7 @@ logic. See `base.py` for the interface new modules must implement.
 from app.modules.converter import compress_pdf as _compress_pdf  # noqa: E402,F401
 from app.modules.converter import delete_pages as _delete_pages  # noqa: E402,F401
 from app.modules.converter import docx_to_pdf as _docx_to_pdf  # noqa: E402,F401
+from app.modules.converter import extract_images as _extract_images  # noqa: E402,F401
 from app.modules.converter import extract_pages as _extract_pages  # noqa: E402,F401
 from app.modules.converter import images_to_pdf as _images_to_pdf  # noqa: E402,F401
 from app.modules.converter import merge_pdf as _merge_pdf  # noqa: E402,F401

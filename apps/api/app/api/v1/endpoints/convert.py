@@ -12,6 +12,7 @@ from app.services.conversion import (
     submit_compress_pdf_job,
     submit_delete_pages_job,
     submit_docx_to_pdf_job,
+    submit_extract_images_job,
     submit_extract_pages_job,
     submit_images_to_pdf_job,
     submit_merge_pdf_job,
@@ -402,6 +403,29 @@ async def convert_pdf_to_images(
 ) -> ConvertJobCreated:
     try:
         job = await submit_pdf_to_images_job(file, image_format, dpi, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/extract-images",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_extract_images(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_extract_images_job(file, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",

@@ -51,6 +51,7 @@ PROTECT_PDF_SLUG = "protect-pdf"
 UNLOCK_PDF_SLUG = "unlock-pdf"
 PDF_TO_IMAGES_SLUG = "pdf-to-images"
 _ALLOWED_PDF_TO_IMAGE_FORMATS = {"png", "jpg", "jpeg"}
+EXTRACT_IMAGES_SLUG = "extract-images"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -746,6 +747,45 @@ async def submit_pdf_to_images_job(
         extra={
             "job_id": job.id,
             "converter_slug": PDF_TO_IMAGES_SLUG,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_extract_images_job(file: UploadFile, settings: Settings) -> ConversionJob:
+    """Validate an uploaded PDF and create an extract-images job for it.
+
+    Input format is the same as `submit_compress_pdf_job` (a single PDF, no
+    extra parameters). Whether the PDF actually contains any embedded
+    images is only known once the job runs, so that check lives in
+    `ExtractImagesConverter.convert`, not here.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    storage = StorageService(upload_dir=settings.convert_upload_dir)
+    _file_id, source_path, size_bytes = await storage.save(file)
+
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(source_path)
+    except PdfValidationError:
+        source_path.unlink(missing_ok=True)
+        raise
+
+    download_filename = f"{Path(original_filename).stem}_images.zip"
+    job = job_store.create(
+        module_slug=EXTRACT_IMAGES_SLUG,
+        source_path=source_path,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": EXTRACT_IMAGES_SLUG,
+            "pages": page_count,
             "size_bytes": size_bytes,
         },
     )
