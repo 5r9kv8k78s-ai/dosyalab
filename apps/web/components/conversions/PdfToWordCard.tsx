@@ -7,17 +7,71 @@ import {
   getConversionStatus,
   submitPdfToDocxConversion,
 } from '@/lib/api';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Dropzone } from '@/components/ui/Dropzone';
+import { Progress, StepDots } from '@/components/ui/Progress';
+import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const POLL_INTERVAL_MS = 800;
 
-type Stage = 'idle' | 'uploading' | 'converting' | 'done' | 'error';
+// The backend has no real per-page progress signal for the conversion itself
+// (see apps/api/app/modules/converter/pdf_to_docx.py) — only upload has a
+// true byte-level percentage. So conversion is represented as named stages
+// with a bar that animates smoothly and continuously, never as a faked
+// precise number.
+type Stage =
+  | 'idle'
+  | 'uploading'
+  | 'processing'
+  | 'creating-document'
+  | 'preparing-download'
+  | 'completed'
+  | 'error';
+
+const IN_FLIGHT_STAGES: Stage[] = [
+  'uploading',
+  'processing',
+  'creating-document',
+  'preparing-download',
+];
+
+// Ordered for the stage dots indicator.
+const STAGE_SEQUENCE: Stage[] = [
+  'uploading',
+  'processing',
+  'creating-document',
+  'preparing-download',
+  'completed',
+];
+
+// Bar fill target per stage, as a percent of the bar's width. These are
+// narrative bands, not measurements — kept comfortably short of 100% until
+// the job is actually done, so the bar never appears to finish early then
+// freeze.
+const STAGE_BAND_END: Record<Stage, number> = {
+  idle: 0,
+  uploading: 20,
+  processing: 45,
+  'creating-document': 75,
+  'preparing-download': 95,
+  completed: 100,
+  error: 0,
+};
+
+// How long to sit on "Processing" before the label advances to "Creating
+// Word document". The backend doesn't expose a distinct signal for this
+// hand-off, so it's a fixed narrative delay rather than a derived number —
+// if the real job finishes first, the status poll short-circuits straight
+// to "Preparing download" regardless of where this timer is.
+const PROCESSING_TO_CREATING_DELAY_MS = 2500;
 
 interface State {
   stage: Stage;
   fileName: string | null;
   uploadProgress: number;
-  conversionProgress: number;
   resultFilename: string | null;
   errorMessage: string | null;
 }
@@ -26,7 +80,6 @@ const initialState: State = {
   stage: 'idle',
   fileName: null,
   uploadProgress: 0,
-  conversionProgress: 0,
   resultFilename: null,
   errorMessage: null,
 };
@@ -38,20 +91,49 @@ function friendlyMessageFor(error: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
+function stageLabel(state: State): string {
+  const name = state.fileName ?? 'file';
+  switch (state.stage) {
+    case 'uploading':
+      return `Uploading ${name}…`;
+    case 'processing':
+      return `Processing ${name}…`;
+    case 'creating-document':
+      return 'Creating Word document…';
+    case 'preparing-download':
+      return 'Preparing your download…';
+    default:
+      return '';
+  }
+}
+
+function barWidthFor(state: State): number {
+  if (state.stage === 'uploading') {
+    // Real, precise data — bytes actually sent — so it's fine to track it
+    // exactly within the uploading band.
+    return (state.uploadProgress / 100) * STAGE_BAND_END.uploading;
+  }
+  return STAGE_BAND_END[state.stage];
+}
+
 export function PdfToWordCard() {
   const [state, setState] = useState<State>(initialState);
-  const [isDragActive, setIsDragActive] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
+
+  const clearTimers = useCallback(() => {
+    if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      clearTimers();
     };
-  }, []);
+  }, [clearTimers]);
 
   const pollStatus = useCallback((jobId: string) => {
     getConversionStatus(jobId)
@@ -59,11 +141,12 @@ export function PdfToWordCard() {
         if (!isMountedRef.current) return;
 
         if (job.status === 'completed') {
-          setState((prev) => ({ ...prev, conversionProgress: 100 }));
+          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+          setState((prev) => ({ ...prev, stage: 'preparing-download' }));
           try {
             await downloadConversionResult(jobId, job.filename);
             if (!isMountedRef.current) return;
-            setState((prev) => ({ ...prev, stage: 'done', resultFilename: job.filename }));
+            setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
           } catch (error) {
             if (!isMountedRef.current) return;
             setState((prev) => ({
@@ -76,6 +159,7 @@ export function PdfToWordCard() {
         }
 
         if (job.status === 'failed') {
+          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
           setState((prev) => ({
             ...prev,
             stage: 'error',
@@ -84,7 +168,6 @@ export function PdfToWordCard() {
           return;
         }
 
-        setState((prev) => ({ ...prev, conversionProgress: job.progress }));
         pollTimeoutRef.current = setTimeout(() => pollStatus(jobId), POLL_INTERVAL_MS);
       })
       .catch((error) => {
@@ -112,6 +195,7 @@ export function PdfToWordCard() {
         return;
       }
 
+      clearTimers();
       setState({
         ...initialState,
         stage: 'uploading',
@@ -125,7 +209,14 @@ export function PdfToWordCard() {
       })
         .then((job) => {
           if (!isMountedRef.current) return;
-          setState((prev) => ({ ...prev, stage: 'converting', uploadProgress: 100 }));
+          setState((prev) => ({ ...prev, stage: 'processing', uploadProgress: 100 }));
+
+          stageAdvanceTimeoutRef.current = setTimeout(() => {
+            setState((prev) =>
+              prev.stage === 'processing' ? { ...prev, stage: 'creating-document' } : prev,
+            );
+          }, PROCESSING_TO_CREATING_DELAY_MS);
+
           pollStatus(job.job_id);
         })
         .catch((error) => {
@@ -137,7 +228,7 @@ export function PdfToWordCard() {
           }));
         });
     },
-    [pollStatus],
+    [clearTimers, pollStatus],
   );
 
   const handleFiles = useCallback(
@@ -148,147 +239,69 @@ export function PdfToWordCard() {
     [startConversion],
   );
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setIsDragActive(false);
-      if (state.stage === 'uploading' || state.stage === 'converting') return;
-      handleFiles(event.dataTransfer.files);
-    },
-    [handleFiles, state.stage],
-  );
-
-  const isBusy = state.stage === 'uploading' || state.stage === 'converting';
+  const isBusy = IN_FLIGHT_STAGES.includes(state.stage);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="bg-brand-50 text-brand-600 flex h-10 w-10 items-center justify-center rounded-lg">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            className="h-5 w-5"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2Z"
-            />
-          </svg>
-        </span>
+    <Card>
+      <CardHeader>
+        <FileTypeIcon type="pdf" size={40} />
         <div>
-          <h2 className="font-semibold text-gray-900">PDF → Word</h2>
-          <p className="text-sm text-gray-400">Convert a PDF into an editable .docx file</p>
+          <CardTitle as="h2">PDF → Word</CardTitle>
+          <CardDescription>Convert a PDF into an editable .docx file</CardDescription>
         </div>
-      </div>
+      </CardHeader>
 
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (!isBusy) setIsDragActive(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          setIsDragActive(false);
-        }}
-        onClick={() => !isBusy && inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (!isBusy && (e.key === 'Enter' || e.key === ' ')) inputRef.current?.click();
-        }}
-        className={`flex min-h-[160px] flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
-          isBusy ? 'cursor-default border-gray-200 bg-gray-50' : 'cursor-pointer'
-        } ${
-          isDragActive
-            ? 'border-brand-500 bg-brand-50'
-            : !isBusy
-              ? 'hover:border-brand-400 hover:bg-brand-50/40 border-gray-300'
-              : ''
-        }`}
+      <Dropzone
+        accept="application/pdf,.pdf"
+        disabled={isBusy}
+        onFiles={handleFiles}
+        aria-label="Drop a PDF here, or click to browse, to convert it to Word"
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-
         {state.stage === 'idle' && (
           <>
-            <p className="text-sm font-medium text-gray-700">Drop a PDF here, or click to browse</p>
-            <p className="mt-1 text-xs text-gray-400">Up to 100MB</p>
+            <p className="text-small font-medium text-foreground">
+              Drop a PDF here, or click to browse
+            </p>
+            <p className="mt-1 text-small text-muted">Up to 100MB</p>
           </>
         )}
 
-        {state.stage === 'uploading' && (
-          <ProgressBlock
-            label={`Uploading ${state.fileName ?? 'file'}…`}
-            percent={state.uploadProgress}
-          />
+        {isBusy && (
+          <div className="w-full max-w-xs space-y-3" aria-live="polite">
+            <p className="text-small font-medium text-foreground">{stageLabel(state)}</p>
+            <Progress value={barWidthFor(state)} aria-label={stageLabel(state)} />
+            <StepDots total={STAGE_SEQUENCE.length} currentIndex={STAGE_SEQUENCE.indexOf(state.stage)} />
+          </div>
         )}
 
-        {state.stage === 'converting' && (
-          <ProgressBlock
-            label={`Converting ${state.fileName ?? 'file'}…`}
-            percent={state.conversionProgress}
-          />
-        )}
-
-        {state.stage === 'done' && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-green-600">
+        {state.stage === 'completed' && (
+          <div
+            className="space-y-3"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <p className="text-small font-medium text-success">
               Converted — {state.resultFilename} downloaded
             </p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setState(initialState);
-              }}
-              className="bg-brand-600 hover:bg-brand-700 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-            >
+            <Button size="sm" onClick={() => setState(initialState)}>
               Convert another file
-            </button>
+            </Button>
           </div>
         )}
 
         {state.stage === 'error' && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-red-600">{state.errorMessage}</p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setState(initialState);
-              }}
-              className="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
-            >
+          <div
+            className="w-full max-w-xs space-y-3"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Alert variant="danger">{state.errorMessage}</Alert>
+            <Button variant="outline" size="sm" onClick={() => setState(initialState)}>
               Try again
-            </button>
+            </Button>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ProgressBlock({ label, percent }: { label: string; percent: number }) {
-  return (
-    <div className="w-full max-w-xs space-y-2">
-      <p className="text-sm font-medium text-gray-700">{label}</p>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-        <div
-          className="bg-brand-500 h-full rounded-full transition-all duration-300"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <p className="text-xs text-gray-400">{percent}%</p>
-    </div>
+      </Dropzone>
+    </Card>
   );
 }

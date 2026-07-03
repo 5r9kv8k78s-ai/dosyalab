@@ -2,7 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body {
-  height: 100%;
+/**
+ * DosyaLab design tokens.
+ *
+ * Colors are stored as space-separated RGB components (not hex) so Tailwind
+ * can apply opacity modifiers, e.g. `bg-primary/10` — see the `rgb(var(...)
+ * / <alpha-value>)` pattern in tailwind.config.ts.
+ */
+@layer base {
+  :root {
+    /* Color system */
+    --color-primary: 79 70 229; /* indigo-600 */
+    --color-primary-hover: 67 56 202; /* indigo-700 */
+    --color-primary-light: 238 242 255; /* indigo-50 */
+    --color-on-primary: 255 255 255;
+
+    --color-secondary: 6 182 212; /* cyan-500 */
+    --color-secondary-hover: 8 145 178; /* cyan-600 */
+    --color-secondary-light: 236 254 255; /* cyan-50 */
+    --color-on-secondary: 255 255 255;
+
+    /* green/amber/red-700, not the more common 600 shades — verified against
+       WCAG AA (4.5:1) for text rendered on each color's "-bg" tint, since
+       that's how Alert/Badge/Toast render these (600 shades fell short:
+       success 3.15:1, danger 4.41:1 measured against their tint backgrounds). */
+    --color-success: 21 128 61; /* green-700 */
+    --color-success-bg: 240 253 244; /* green-50 */
+    --color-warning: 180 83 9; /* amber-700 */
+    --color-warning-bg: 255 251 235; /* amber-50 */
+    --color-danger: 185 28 28; /* red-700 */
+    --color-danger-bg: 254 242 242; /* red-50 */
+
+    --color-background: 248 250 252; /* slate-50 */
+    --color-surface: 255 255 255;
+    --color-border: 226 232 240; /* slate-200 */
+    --color-foreground: 15 23 42; /* slate-900 */
+    --color-muted: 100 116 139; /* slate-500 */
+    --color-muted-foreground: 148 163 184; /* slate-400 */
+
+    /* Radius scale */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-full: 9999px;
+
+    /* Shadow system */
+    --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+    --shadow-md: 0 4px 8px -2px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+    --shadow-lg: 0 12px 24px -6px rgb(15 23 42 / 0.08), 0 4px 8px -4px rgb(15 23 42 / 0.04);
+    --shadow-xl: 0 24px 48px -12px rgb(15 23 42 / 0.14);
+
+    /* Animation durations */
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 400ms;
+
+    /* z-index scale */
+    --z-dropdown: 20;
+    --z-sticky: 30;
+    --z-overlay: 40;
+    --z-modal: 50;
+    --z-toast: 60;
+    --z-tooltip: 70;
+  }
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: rgb(var(--color-background));
+    color: rgb(var(--color-foreground));
+  }
+
+  /* Consistent, visible focus ring across the app — mirrors the Tailwind
+     `focus-ring` utility below, applied as a base default so even
+     unstyled/native elements get an accessible focus indicator. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-primary));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+}
+
+/* Continuous "alive" sweep used on in-progress bars whose fill width isn't
+   driven by a precise numeric signal (see Progress in components/ui) —
+   motion communicates "still working" without implying a fake percentage. */
+@keyframes progress-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-progress-shimmer {
+  animation: progress-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-progress-shimmer {
+    animation: none;
+  }
 }

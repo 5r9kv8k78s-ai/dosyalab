@@ -2,8 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import { getHealth } from '@/lib/api';
+import { Badge } from '@/components/ui/Badge';
+import { cn } from '@/lib/utils';
 
 type Status = 'checking' | 'online' | 'offline';
+
+const VARIANT_BY_STATUS = {
+  checking: 'neutral',
+  online: 'success',
+  offline: 'danger',
+} as const;
+
+const DOT_COLOR_BY_STATUS = {
+  checking: 'bg-warning',
+  online: 'bg-success',
+  offline: 'bg-danger',
+} as const;
+
+const LABEL_BY_STATUS = {
+  checking: 'Checking backend…',
+  online: 'Backend online',
+  offline: 'Backend unreachable',
+} as const;
 
 export function HealthStatus() {
   const [status, setStatus] = useState<Status>('checking');
@@ -29,22 +49,15 @@ export function HealthStatus() {
     };
   }, []);
 
-  const dotColor = {
-    checking: 'bg-yellow-400',
-    online: 'bg-green-500',
-    offline: 'bg-red-500',
-  }[status];
-
-  const label = {
-    checking: 'Checking backend…',
-    online: 'Backend online',
-    offline: 'Backend unreachable',
-  }[status];
-
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-600 shadow-sm">
-      <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-      {label}
-    </div>
+    <Badge
+      variant={VARIANT_BY_STATUS[status]}
+      className="gap-2 border bg-surface py-1 shadow-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <span className={cn('h-2 w-2 rounded-full', DOT_COLOR_BY_STATUS[status])} aria-hidden="true" />
+      {LABEL_BY_STATUS[status]}
+    </Badge>
   );
 }
