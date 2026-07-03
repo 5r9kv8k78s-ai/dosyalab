@@ -7,7 +7,8 @@ import {
   getConversionStatus,
   submitToolConversion,
 } from '@/lib/api';
-import type { ToolConfig } from '@/lib/tools';
+import { useTranslation, type Translations } from '@/lib/i18n';
+import { toolFieldKey, type ToolConfig } from '@/lib/tools';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -77,30 +78,41 @@ interface State {
   errorMessage: string | null;
 }
 
-function friendlyMessageFor(error: unknown): string {
+function initialFieldValues(tool: ToolConfig): Record<string, string> {
+  return Object.fromEntries(tool.fields.map((field) => [field.name, field.defaultValue ?? '']));
+}
+
+function initialStateFor(tool: ToolConfig): State {
+  return {
+    stage: 'idle',
+    files: [],
+    fieldValues: initialFieldValues(tool),
+    uploadProgress: 0,
+    resultFilename: null,
+    errorMessage: null,
+  };
+}
+
+function friendlyMessageFor(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     return error.message;
   }
-  return 'Something went wrong. Please try again.';
+  return fallback;
 }
 
-function summarizeFileNames(files: File[]): string {
-  if (files.length === 0) return 'file';
-  if (files.length === 1) return files[0].name;
-  return `${files.length} files`;
-}
-
-function stageLabel(state: State, tool: ToolConfig): string {
-  const name = summarizeFileNames(state.files);
+function stageLabel(state: State, tool: ToolConfig, t: Translations): string {
+  const toolTitle = t.tools[tool.slug].title;
   switch (state.stage) {
     case 'uploading':
-      return `Uploading ${name}…`;
+      return state.files.length > 1
+        ? t.progress.filesUploading(state.files.length)
+        : t.progress.fileUploading(state.files[0]?.name ?? '');
     case 'processing':
-      return `Processing ${name}…`;
+      return t.progress.processing;
     case 'creating-document':
-      return `Creating ${tool.title}…`;
+      return t.progress.creatingTool(toolTitle);
     case 'preparing-download':
-      return 'Preparing your download…';
+      return t.progress.preparing;
     default:
       return '';
   }
@@ -120,22 +132,11 @@ function extensionsFromAccept(accept: string): string[] {
     .filter((part) => part.startsWith('.'));
 }
 
-function initialFieldValues(tool: ToolConfig): Record<string, string> {
-  return Object.fromEntries(tool.fields.map((field) => [field.name, field.defaultValue ?? '']));
-}
-
-function initialStateFor(tool: ToolConfig): State {
-  return {
-    stage: 'idle',
-    files: [],
-    fieldValues: initialFieldValues(tool),
-    uploadProgress: 0,
-    resultFilename: null,
-    errorMessage: null,
-  };
-}
-
 export function ToolCard({ tool }: { tool: ToolConfig }) {
+  const { t } = useTranslation();
+  const toolTitle = t.tools[tool.slug].title;
+  const toolDescription = t.tools[tool.slug].description;
+
   const [state, setState] = useState<State>(() => initialStateFor(tool));
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,46 +155,53 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
     };
   }, [clearTimers]);
 
-  const pollStatus = useCallback((jobId: string) => {
-    getConversionStatus(jobId)
-      .then(async (job) => {
-        if (!isMountedRef.current) return;
+  const pollStatus = useCallback(
+    (jobId: string) => {
+      getConversionStatus(jobId)
+        .then(async (job) => {
+          if (!isMountedRef.current) return;
 
-        if (job.status === 'completed') {
-          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
-          setState((prev) => ({ ...prev, stage: 'preparing-download' }));
-          try {
-            await downloadConversionResult(jobId, job.filename);
-            if (!isMountedRef.current) return;
-            setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
-          } catch (error) {
-            if (!isMountedRef.current) return;
+          if (job.status === 'completed') {
+            if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+            setState((prev) => ({ ...prev, stage: 'preparing-download' }));
+            try {
+              await downloadConversionResult(jobId, job.filename);
+              if (!isMountedRef.current) return;
+              setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
+            } catch (error) {
+              if (!isMountedRef.current) return;
+              setState((prev) => ({
+                ...prev,
+                stage: 'error',
+                errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
+              }));
+            }
+            return;
+          }
+
+          if (job.status === 'failed') {
+            if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
             setState((prev) => ({
               ...prev,
               stage: 'error',
-              errorMessage: friendlyMessageFor(error),
+              errorMessage: job.error ?? t.errors.conversionFailedTryDifferent,
             }));
+            return;
           }
-          return;
-        }
 
-        if (job.status === 'failed') {
-          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+          pollTimeoutRef.current = setTimeout(() => pollStatus(jobId), POLL_INTERVAL_MS);
+        })
+        .catch((error) => {
+          if (!isMountedRef.current) return;
           setState((prev) => ({
             ...prev,
             stage: 'error',
-            errorMessage: job.error ?? 'Conversion failed. Please try a different file.',
+            errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
           }));
-          return;
-        }
-
-        pollTimeoutRef.current = setTimeout(() => pollStatus(jobId), POLL_INTERVAL_MS);
-      })
-      .catch((error) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, stage: 'error', errorMessage: friendlyMessageFor(error) }));
-      });
-  }, []);
+        });
+    },
+    [t.errors.conversionFailedTryDifferent, t.errors.somethingWrong],
+  );
 
   const startConversion = useCallback(
     (files: File[], fieldValues: Record<string, string>) => {
@@ -222,11 +230,11 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
           setState((prev) => ({
             ...prev,
             stage: 'error',
-            errorMessage: friendlyMessageFor(error),
+            errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
           }));
         });
     },
-    [clearTimers, pollStatus, tool.multiple, tool.slug],
+    [clearTimers, pollStatus, t.errors.somethingWrong, tool.multiple, tool.slug],
   );
 
   const handleFiles = useCallback(
@@ -243,7 +251,7 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
         setState({
           ...initialStateFor(tool),
           stage: 'error',
-          errorMessage: `${invalidFile.name} is not a supported file type for ${tool.title}.`,
+          errorMessage: t.errors.unsupportedFileTypeFor(invalidFile.name, toolTitle),
         });
         return;
       }
@@ -252,7 +260,7 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
         setState({
           ...initialStateFor(tool),
           stage: 'error',
-          errorMessage: `${oversizedFile.name} is larger than the 100MB limit.`,
+          errorMessage: t.errors.fileTooLargeDetail(oversizedFile.name),
         });
         return;
       }
@@ -265,7 +273,12 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
         setState({ ...initialStateFor(tool), stage: 'ready', files, fieldValues });
       }
     },
-    [startConversion, tool],
+    [
+      startConversion,
+      t.errors,
+      tool,
+      toolTitle,
+    ],
   );
 
   const updateField = useCallback((name: string, value: string) => {
@@ -283,8 +296,8 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
       <CardHeader>
         <FileTypeIcon type={tool.fileType} size={40} />
         <div>
-          <CardTitle as="h3">{tool.title}</CardTitle>
-          <CardDescription>{tool.description}</CardDescription>
+          <CardTitle as="h3">{toolTitle}</CardTitle>
+          <CardDescription>{toolDescription}</CardDescription>
         </div>
       </CardHeader>
 
@@ -293,13 +306,11 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
         multiple={tool.multiple}
         disabled={isBusy || state.stage === 'ready'}
         onFiles={handleFiles}
-        aria-label={`Drop a file here, or click to browse, for ${tool.title}`}
+        aria-label={t.upload.dropZoneAriaLabel(toolTitle)}
         className="flex-1"
       >
         {state.stage === 'idle' && (
-          <p className="text-small text-foreground font-medium">
-            Drop a file here, or click to browse
-          </p>
+          <p className="text-small text-foreground font-medium">{t.upload.dropHere}</p>
         )}
 
         {state.stage === 'ready' && (
@@ -309,29 +320,32 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
             onKeyDown={(event) => event.stopPropagation()}
           >
             <p className="text-small text-foreground truncate font-medium">
-              {summarizeFileNames(state.files)}
+              {state.files[0]?.name}
             </p>
-            {tool.fields.map((field) => (
-              <Input
-                key={field.name}
-                type={field.type}
-                label={field.label}
-                placeholder={field.placeholder}
-                hint={field.hint}
-                value={state.fieldValues[field.name] ?? ''}
-                onChange={(event) => updateField(field.name, event.target.value)}
-              />
-            ))}
+            {tool.fields.map((field) => {
+              const fieldText = t.toolFields[toolFieldKey(tool.slug, field.name)];
+              return (
+                <Input
+                  key={field.name}
+                  type={field.type}
+                  label={fieldText.label}
+                  placeholder={'placeholder' in fieldText ? fieldText.placeholder : undefined}
+                  hint={'hint' in fieldText ? fieldText.hint : undefined}
+                  value={state.fieldValues[field.name] ?? ''}
+                  onChange={(event) => updateField(field.name, event.target.value)}
+                />
+              );
+            })}
             <div className="flex gap-2">
               <Button
                 size="sm"
                 disabled={missingRequiredField}
                 onClick={() => startConversion(state.files, state.fieldValues)}
               >
-                Start
+                {t.buttons.start}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setState(initialStateFor(tool))}>
-                Cancel
+                {t.buttons.cancel}
               </Button>
             </div>
           </div>
@@ -339,8 +353,8 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
 
         {isBusy && (
           <div className="w-full max-w-xs space-y-3" aria-live="polite">
-            <p className="text-small text-foreground font-medium">{stageLabel(state, tool)}</p>
-            <Progress value={barWidthFor(state)} aria-label={stageLabel(state, tool)} />
+            <p className="text-small text-foreground font-medium">{stageLabel(state, tool, t)}</p>
+            <Progress value={barWidthFor(state)} aria-label={stageLabel(state, tool, t)} />
             <StepDots
               total={STAGE_SEQUENCE.length}
               currentIndex={STAGE_SEQUENCE.indexOf(state.stage)}
@@ -355,10 +369,10 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
             onKeyDown={(event) => event.stopPropagation()}
           >
             <p className="text-small text-success font-medium">
-              Done — {state.resultFilename} downloaded
+              {t.progress.doneDownloaded(state.resultFilename ?? '')}
             </p>
             <Button size="sm" onClick={() => setState(initialStateFor(tool))}>
-              Convert another file
+              {t.buttons.convertAnotherFile}
             </Button>
           </div>
         )}
@@ -371,7 +385,7 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
           >
             <Alert variant="danger">{state.errorMessage}</Alert>
             <Button variant="outline" size="sm" onClick={() => setState(initialStateFor(tool))}>
-              Try again
+              {t.buttons.tryAgain}
             </Button>
           </div>
         )}

@@ -1,3 +1,6 @@
+'use client';
+
+import { useTranslation } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export type FileType = 'pdf' | 'word' | 'excel' | 'image';
@@ -23,6 +26,7 @@ export interface FileTypeIconProps {
  * type icons and the logo read as one visual family.
  */
 export function FileTypeIcon({ type, size = 40, label = true, className }: FileTypeIconProps) {
+  const { t } = useTranslation();
   const style = FILE_TYPE_STYLE[type];
 
   return (
@@ -33,7 +37,7 @@ export function FileTypeIcon({ type, size = 40, label = true, className }: FileT
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label={`${style.label} file`}
+      aria-label={`${style.label} ${t.common.file}`}
       className={cn(className)}
     >
       <path d="M23 6L31 14V34H9V6H23Z" fill={style.tint} stroke={style.color} strokeWidth="1.5" />

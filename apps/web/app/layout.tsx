@@ -4,6 +4,8 @@ import { SiteFooter } from '@/components/layout/SiteFooter';
 import { SiteHeader } from '@/components/layout/SiteHeader';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
+import { LanguageProvider } from '@/lib/i18n';
+import { tr } from '@/lib/i18n/tr';
 import './globals.css';
 
 // Self-hosted by Next.js at build time (no request to Google Fonts at
@@ -15,8 +17,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'DosyaLab',
-  description: 'Belgelerinizi hızlı, güvenli ve ücretsiz dönüştürün.',
+  title: tr.common.brandName,
+  description: tr.hero.subtitle,
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -34,15 +36,17 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="tr" className={inter.variable}>
       <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
-        <ToastProvider>
-          <TooltipProvider>
-            <SiteHeader />
-            <div className="flex-1">{children}</div>
-            <SiteFooter />
-          </TooltipProvider>
-        </ToastProvider>
+        <LanguageProvider>
+          <ToastProvider>
+            <TooltipProvider>
+              <SiteHeader />
+              <div className="flex-1">{children}</div>
+              <SiteFooter />
+            </TooltipProvider>
+          </ToastProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

@@ -1,20 +1,22 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { TOOLS, TOOL_CATEGORIES, type ToolCategory } from '@/lib/tools';
+import { useTranslation } from '@/lib/i18n';
+import { TOOL_CATEGORIES, TOOLS, type ToolCategory } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { MergePdfCard } from './MergePdfCard';
 import { ToolCard } from './ToolCard';
 
 type FilterId = 'all' | ToolCategory;
 
-const FILTERS: { id: FilterId; label: string }[] = [
-  { id: 'all', label: 'All' },
-  ...TOOL_CATEGORIES,
-];
-
 export function ToolsExplorer() {
+  const { t } = useTranslation();
   const [activeFilter, setActiveFilter] = useState<FilterId>('all');
+
+  const filters: { id: FilterId; label: string }[] = [
+    { id: 'all', label: t.categories.all },
+    ...TOOL_CATEGORIES.map((category) => ({ id: category, label: t.categories[category] })),
+  ];
 
   const visibleTools = useMemo(
     () => TOOLS.filter((tool) => activeFilter === 'all' || tool.category === activeFilter),
@@ -26,9 +28,9 @@ export function ToolsExplorer() {
       <div
         className="flex flex-wrap justify-center gap-2"
         role="tablist"
-        aria-label="Tool categories"
+        aria-label={t.categories.tabsAriaLabel}
       >
-        {FILTERS.map((filter) => (
+        {filters.map((filter) => (
           <button
             key={filter.id}
             type="button"
@@ -49,7 +51,7 @@ export function ToolsExplorer() {
 
       <div
         className="mt-8 grid w-full grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4"
-        aria-label="Available conversion tools"
+        aria-label={t.toolsGrid.ariaLabel}
       >
         {visibleTools.map((tool) =>
           tool.slug === 'merge-pdf' ? (

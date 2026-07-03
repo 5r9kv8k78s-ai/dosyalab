@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getHealth } from '@/lib/api';
+import { useTranslation } from '@/lib/i18n';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 
@@ -19,13 +20,8 @@ const DOT_COLOR_BY_STATUS = {
   offline: 'bg-danger',
 } as const;
 
-const LABEL_BY_STATUS = {
-  checking: 'Checking backend…',
-  online: 'Backend online',
-  offline: 'Backend unreachable',
-} as const;
-
 export function HealthStatus() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status>('checking');
 
   useEffect(() => {
@@ -49,6 +45,12 @@ export function HealthStatus() {
     };
   }, []);
 
+  const labelByStatus: Record<Status, string> = {
+    checking: t.status.checking,
+    online: t.status.online,
+    offline: t.status.offline,
+  };
+
   return (
     <Badge
       variant={VARIANT_BY_STATUS[status]}
@@ -57,7 +59,7 @@ export function HealthStatus() {
       aria-live="polite"
     >
       <span className={cn('h-2 w-2 rounded-full', DOT_COLOR_BY_STATUS[status])} aria-hidden="true" />
-      {LABEL_BY_STATUS[status]}
+      {labelByStatus[status]}
     </Badge>
   );
 }

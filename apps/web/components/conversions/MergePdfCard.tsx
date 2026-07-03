@@ -8,6 +8,7 @@ import {
   getConversionStatus,
   submitMergePdfConversion,
 } from '@/lib/api';
+import { useTranslation, type Translations } from '@/lib/i18n';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -96,23 +97,23 @@ const initialState: State = {
   errorMessage: null,
 };
 
-function friendlyMessageFor(error: unknown): string {
+function friendlyMessageFor(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     return error.message;
   }
-  return 'Something went wrong. Please try again.';
+  return fallback;
 }
 
-function stageLabel(state: State): string {
+function stageLabel(state: State, t: Translations): string {
   switch (state.stage) {
     case 'uploading':
-      return `Uploading ${state.files.length} PDFs…`;
+      return t.progress.filesUploading(state.files.length);
     case 'processing':
-      return 'Processing…';
+      return t.progress.processing;
     case 'creating-document':
-      return 'Creating merged PDF…';
+      return t.progress.creatingMergedPdf;
     case 'preparing-download':
-      return 'Preparing your download…';
+      return t.progress.preparing;
     default:
       return '';
   }
@@ -136,6 +137,7 @@ function moveFile(files: File[], index: number, direction: -1 | 1): File[] {
 }
 
 export function MergePdfCard() {
+  const { t } = useTranslation();
   const [state, setState] = useState<State>(initialState);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,7 +173,7 @@ export function MergePdfCard() {
             setState((prev) => ({
               ...prev,
               stage: 'error',
-              errorMessage: friendlyMessageFor(error),
+              errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
             }));
           }
           return;
@@ -182,7 +184,7 @@ export function MergePdfCard() {
           setState((prev) => ({
             ...prev,
             stage: 'error',
-            errorMessage: job.error ?? 'Conversion failed. Please try a different file.',
+            errorMessage: job.error ?? t.errors.conversionFailedTryDifferent,
           }));
           return;
         }
@@ -191,9 +193,13 @@ export function MergePdfCard() {
       })
       .catch((error) => {
         if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, stage: 'error', errorMessage: friendlyMessageFor(error) }));
+        setState((prev) => ({
+          ...prev,
+          stage: 'error',
+          errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
+        }));
       });
-  }, []);
+  }, [t.errors.conversionFailedTryDifferent, t.errors.somethingWrong]);
 
   const startConversion = useCallback(
     (files: File[]) => {
@@ -226,40 +232,43 @@ export function MergePdfCard() {
           setState((prev) => ({
             ...prev,
             stage: 'error',
-            errorMessage: friendlyMessageFor(error),
+            errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
           }));
         });
     },
-    [clearTimers, pollStatus],
+    [clearTimers, pollStatus, t.errors.somethingWrong],
   );
 
-  const handleFiles = useCallback((fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
+  const handleFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+      const files = Array.from(fileList);
 
-    const invalidFile = files.find(
-      (file) => !ALLOWED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
-    );
-    if (invalidFile) {
-      setState({
-        ...initialState,
-        stage: 'error',
-        errorMessage: 'Only PDF files are supported for this conversion.',
-      });
-      return;
-    }
-    const oversizedFile = files.find((file) => file.size > MAX_FILE_SIZE_BYTES);
-    if (oversizedFile) {
-      setState({
-        ...initialState,
-        stage: 'error',
-        errorMessage: `${oversizedFile.name} is larger than the 100MB limit for Merge PDF.`,
-      });
-      return;
-    }
+      const invalidFile = files.find(
+        (file) => !ALLOWED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
+      );
+      if (invalidFile) {
+        setState({
+          ...initialState,
+          stage: 'error',
+          errorMessage: t.errors.onlyPdfSupported,
+        });
+        return;
+      }
+      const oversizedFile = files.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+      if (oversizedFile) {
+        setState({
+          ...initialState,
+          stage: 'error',
+          errorMessage: t.errors.fileTooLargeDetail(oversizedFile.name),
+        });
+        return;
+      }
 
-    setState({ ...initialState, stage: 'selecting', files });
-  }, []);
+      setState({ ...initialState, stage: 'selecting', files });
+    },
+    [t.errors],
+  );
 
   const moveSelectedFile = useCallback((index: number, direction: -1 | 1) => {
     setState((prev) => ({ ...prev, files: moveFile(prev.files, index, direction) }));
@@ -272,8 +281,8 @@ export function MergePdfCard() {
       <CardHeader>
         <FileTypeIcon type="pdf" size={40} />
         <div>
-          <CardTitle as="h2">Merge PDF</CardTitle>
-          <CardDescription>Combine multiple PDFs into one</CardDescription>
+          <CardTitle as="h2">{t.tools['merge-pdf'].title}</CardTitle>
+          <CardDescription>{t.tools['merge-pdf'].description}</CardDescription>
         </div>
       </CardHeader>
 
@@ -282,14 +291,12 @@ export function MergePdfCard() {
         multiple
         disabled={isBusy || state.stage === 'selecting'}
         onFiles={handleFiles}
-        aria-label="Drop two or more PDFs here, or click to browse, to merge them"
+        aria-label={t.upload.mergeDropZoneAriaLabel}
       >
         {state.stage === 'idle' && (
           <>
-            <p className="text-small text-foreground font-medium">
-              Drop PDFs here, or click to browse
-            </p>
-            <p className="text-small text-muted mt-1">Two or more PDFs — up to 100MB each</p>
+            <p className="text-small text-foreground font-medium">{t.upload.dropHere}</p>
+            <p className="text-small text-muted mt-1">{t.upload.mergeHint}</p>
           </>
         )}
 
@@ -300,7 +307,7 @@ export function MergePdfCard() {
             onKeyDown={(event) => event.stopPropagation()}
           >
             <p className="text-small text-foreground font-medium">
-              {state.files.length} PDFs selected — reorder if needed
+              {t.upload.selectedCount(state.files.length)}
             </p>
             <ul className="space-y-1.5">
               {state.files.map((file, index) => (
@@ -315,7 +322,7 @@ export function MergePdfCard() {
                     type="button"
                     className="focus-ring rounded p-1 text-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
                     disabled={index === 0}
-                    aria-label={`Move ${file.name} up`}
+                    aria-label={t.buttons.moveFileUp(file.name)}
                     onClick={() => moveSelectedFile(index, -1)}
                   >
                     <ChevronUp className="h-4 w-4" aria-hidden="true" />
@@ -324,7 +331,7 @@ export function MergePdfCard() {
                     type="button"
                     className="focus-ring rounded p-1 text-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
                     disabled={index === state.files.length - 1}
-                    aria-label={`Move ${file.name} down`}
+                    aria-label={t.buttons.moveFileDown(file.name)}
                     onClick={() => moveSelectedFile(index, 1)}
                   >
                     <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -338,10 +345,10 @@ export function MergePdfCard() {
                 disabled={state.files.length < 2}
                 onClick={() => startConversion(state.files)}
               >
-                Merge PDFs
+                {t.buttons.mergePdfs}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setState(initialState)}>
-                Cancel
+                {t.buttons.cancel}
               </Button>
             </div>
           </div>
@@ -349,8 +356,8 @@ export function MergePdfCard() {
 
         {isBusy && (
           <div className="w-full max-w-xs space-y-3" aria-live="polite">
-            <p className="text-small text-foreground font-medium">{stageLabel(state)}</p>
-            <Progress value={barWidthFor(state)} aria-label={stageLabel(state)} />
+            <p className="text-small text-foreground font-medium">{stageLabel(state, t)}</p>
+            <Progress value={barWidthFor(state)} aria-label={stageLabel(state, t)} />
             <StepDots
               total={STAGE_SEQUENCE.length}
               currentIndex={STAGE_SEQUENCE.indexOf(state.stage)}
@@ -365,10 +372,10 @@ export function MergePdfCard() {
             onKeyDown={(event) => event.stopPropagation()}
           >
             <p className="text-small text-success font-medium">
-              Merged — {state.resultFilename} downloaded
+              {t.progress.mergedDownloaded(state.resultFilename ?? '')}
             </p>
             <Button size="sm" onClick={() => setState(initialState)}>
-              Merge more files
+              {t.buttons.mergeMoreFiles}
             </Button>
           </div>
         )}
@@ -381,7 +388,7 @@ export function MergePdfCard() {
           >
             <Alert variant="danger">{state.errorMessage}</Alert>
             <Button variant="outline" size="sm" onClick={() => setState(initialState)}>
-              Try again
+              {t.buttons.tryAgain}
             </Button>
           </div>
         )}

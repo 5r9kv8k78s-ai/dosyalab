@@ -1,4 +1,17 @@
+import { detectBrowserLocale, readStoredLocale, translations } from '@/lib/i18n';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+
+/**
+ * This module has no access to React context (it's plain functions, not a
+ * component/hook), so it can't call `useTranslation()`. `readStoredLocale`
+ * and `detectBrowserLocale` are the same plain, non-hook functions
+ * `LanguageProvider` uses internally — reusing them here keeps network-level
+ * error messages in the user's actual chosen/detected language.
+ */
+function currentTranslations() {
+  return translations[readStoredLocale() ?? detectBrowserLocale()];
+}
 
 export interface HealthStatus {
   status: string;
@@ -35,7 +48,7 @@ export class ApiError extends Error {
 export async function getHealth(): Promise<HealthStatus> {
   const response = await fetch(`${API_BASE_URL}/api/v1/health`);
   if (!response.ok) {
-    throw new ApiError('Failed to reach DosyaLab API', response.status);
+    throw new ApiError(currentTranslations().errors.healthCheckFailed, response.status);
   }
   return response.json();
 }
@@ -72,12 +85,12 @@ export function submitPdfToDocxConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -111,12 +124,12 @@ export function submitDocxToPdfConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -151,12 +164,12 @@ export function submitPdfToXlsxConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -193,12 +206,12 @@ export function submitImagesToPdfConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -236,12 +249,12 @@ export function submitMergePdfConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -281,12 +294,12 @@ export function submitToolConversion(
         resolve(JSON.parse(xhr.responseText));
         return;
       }
-      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      const detail = await parseErrorDetail(xhr, currentTranslations().errors.uploadFailed);
       reject(new ApiError(detail, xhr.status));
     };
 
     xhr.onerror = () => {
-      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+      reject(new ApiError(currentTranslations().errors.serverUnreachable, 0));
     };
 
     const formData = new FormData();
@@ -304,7 +317,7 @@ export function submitToolConversion(
 export async function getConversionStatus(jobId: string): Promise<ConvertJobStatus> {
   const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}`);
   if (!response.ok) {
-    throw new ApiError('Lost track of the conversion job.', response.status);
+    throw new ApiError(currentTranslations().errors.jobNotFound, response.status);
   }
   return response.json();
 }
@@ -313,7 +326,7 @@ export async function getConversionStatus(jobId: string): Promise<ConvertJobStat
 export async function downloadConversionResult(jobId: string, filename: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}/download`);
   if (!response.ok) {
-    throw new ApiError('Failed to download the converted file.', response.status);
+    throw new ApiError(currentTranslations().errors.downloadFailed, response.status);
   }
 
   const blob = await response.blob();

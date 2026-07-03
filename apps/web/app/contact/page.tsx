@@ -1,18 +1,11 @@
 import type { Metadata } from 'next';
-import { StaticPage } from '@/components/layout/StaticPage';
+import { ContactContent } from '@/components/pages/ContactContent';
+import { tr } from '@/lib/i18n/tr';
 
 export const metadata: Metadata = {
-  title: 'Contact — DosyaLab',
+  title: tr.pages.contact.metaTitle,
 };
 
 export default function ContactPage() {
-  return (
-    <StaticPage title="Contact">
-      <p>
-        DosyaLab is a new, actively developed project, and dedicated support channels aren&apos;t
-        set up yet.
-      </p>
-      <p>Real contact details — support email, issue tracker, or feedback form — will be added here.</p>
-    </StaticPage>
-  );
+  return <ContactContent />;
 }
