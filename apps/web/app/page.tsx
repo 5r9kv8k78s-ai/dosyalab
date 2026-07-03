@@ -1,9 +1,8 @@
 import { ShieldCheck } from 'lucide-react';
-import { ComingSoonCard } from '@/components/conversions/ComingSoonCard';
+import { ImageToPdfCard } from '@/components/conversions/ImageToPdfCard';
 import { PdfToExcelCard } from '@/components/conversions/PdfToExcelCard';
 import { PdfToWordCard } from '@/components/conversions/PdfToWordCard';
 import { WordToPdfCard } from '@/components/conversions/WordToPdfCard';
-import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 
 export default function Home() {
   return (
@@ -23,11 +22,7 @@ export default function Home() {
       >
         <PdfToWordCard />
         <WordToPdfCard />
-        <ComingSoonCard
-          title="Image → PDF"
-          description="Combine images into a single PDF"
-          icon={<FileTypeIcon type="image" size={40} />}
-        />
+        <ImageToPdfCard />
         <PdfToExcelCard />
       </section>
 

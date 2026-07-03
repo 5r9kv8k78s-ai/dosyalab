@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import shutil
+import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -11,6 +13,12 @@ from app.services.docx_validation import (
     inspect_docx,
     validate_docx_extension,
     validate_docx_size,
+)
+from app.services.image_validation import (
+    ImageValidationError,
+    inspect_image,
+    validate_image_extension,
+    validate_image_size,
 )
 from app.services.jobs import ConversionJob, JobStatus, job_store
 from app.services.pdf_validation import (
@@ -27,6 +35,7 @@ logger = logging.getLogger(__name__)
 PDF_TO_DOCX_SLUG = "pdf-to-docx"
 DOCX_TO_PDF_SLUG = "docx-to-pdf"
 PDF_TO_XLSX_SLUG = "pdf-to-xlsx"
+IMAGES_TO_PDF_SLUG = "images-to-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -147,6 +156,61 @@ async def submit_pdf_to_xlsx_job(file: UploadFile, settings: Settings) -> Conver
     return job
 
 
+async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) -> ConversionJob:
+    """Validate one or more uploaded images and create a conversion job for
+    them.
+
+    Unlike the single-file submit functions above, images are saved into a
+    per-job directory rather than a single path, with a zero-padded index
+    prefix on each filename — `sorted(directory.iterdir())` in
+    `ImagesToPdfConverter.convert` then reproduces upload order exactly,
+    since a plain directory listing isn't guaranteed to.
+    """
+    if not files:
+        raise ImageValidationError("At least one image is required.")
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    total_size_bytes = 0
+    try:
+        for index, file in enumerate(files):
+            original_filename = secure_filename(file.filename)
+            validate_image_extension(original_filename)
+
+            _file_id, saved_path, size_bytes = await storage.save(file)
+            validate_image_size(size_bytes, settings.max_convert_upload_size_mb)
+            inspect_image(saved_path)
+
+            ordered_path = job_upload_dir / f"{index:04d}{saved_path.suffix}"
+            saved_path.rename(ordered_path)
+            total_size_bytes += size_bytes
+    except ImageValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    if len(files) == 1:
+        download_filename = f"{Path(secure_filename(files[0].filename)).stem}.pdf"
+    else:
+        download_filename = "images.pdf"
+
+    job = job_store.create(
+        module_slug=IMAGES_TO_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": IMAGES_TO_PDF_SLUG,
+            "image_count": len(files),
+            "size_bytes": total_size_bytes,
+        },
+    )
+    return job
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking progress."""
     job = job_store.get(job_id)
@@ -175,7 +239,15 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         logger.exception("convert.job_failed", extra={"job_id": job_id})
     finally:
         ticker.cancel()
-        job.source_path.unlink(missing_ok=True)
+        # Images-to-PDF jobs store source_path as a directory of ordered
+        # image files rather than a single file (see
+        # submit_images_to_pdf_job); every other converter's source_path is
+        # always a plain file, so this branch is a no-op for them —
+        # unlink(missing_ok=True) still runs exactly as before.
+        if job.source_path.is_dir():
+            shutil.rmtree(job.source_path, ignore_errors=True)
+        else:
+            job.source_path.unlink(missing_ok=True)
 
 
 async def _tick_progress(job_id: str) -> None:

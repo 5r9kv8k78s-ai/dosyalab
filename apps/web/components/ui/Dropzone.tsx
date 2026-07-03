@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 
 export interface DropzoneProps {
   accept?: string;
+  /** Allow selecting/dropping more than one file. Defaults to false (unchanged single-file behavior). */
+  multiple?: boolean;
   disabled?: boolean;
   onFiles: (files: FileList | null) => void;
   children: ReactNode;
@@ -14,6 +16,7 @@ export interface DropzoneProps {
 
 export function Dropzone({
   accept,
+  multiple,
   disabled,
   onFiles,
   children,
@@ -56,10 +59,10 @@ export function Dropzone({
         }
       }}
       className={cn(
-        'focus-ring flex min-h-[160px] flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors duration-base',
+        'focus-ring duration-base flex min-h-[160px] flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors',
         disabled
-          ? 'cursor-default border-border bg-background'
-          : 'cursor-pointer border-border hover:border-primary hover:bg-primary-light/40',
+          ? 'border-border bg-background cursor-default'
+          : 'border-border hover:border-primary hover:bg-primary-light/40 cursor-pointer',
         isDragActive && 'border-primary bg-primary-light',
         className,
       )}
@@ -69,6 +72,7 @@ export function Dropzone({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         className="hidden"
         onChange={(event) => onFiles(event.target.files)}
         disabled={disabled}

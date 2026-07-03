@@ -12,6 +12,9 @@ from app.services.jobs import job_store
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_PDF_PATH = FIXTURES_DIR / "sample.pdf"
 SAMPLE_DOCX_PATH = FIXTURES_DIR / "sample.docx"
+SAMPLE_JPG_PATH = FIXTURES_DIR / "sample.jpg"
+SAMPLE_PNG_PATH = FIXTURES_DIR / "sample.png"
+SAMPLE_WEBP_PATH = FIXTURES_DIR / "sample.webp"
 
 
 @pytest.fixture
@@ -83,6 +86,30 @@ def encrypted_docx_bytes() -> bytes:
     # the signature-detection path directly against the real, documented
     # magic bytes rather than a full encrypted document.
     return b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100
+
+
+@pytest.fixture
+def sample_jpg_bytes() -> bytes:
+    return SAMPLE_JPG_PATH.read_bytes()
+
+
+@pytest.fixture
+def sample_png_bytes() -> bytes:
+    return SAMPLE_PNG_PATH.read_bytes()
+
+
+@pytest.fixture
+def sample_webp_bytes() -> bytes:
+    return SAMPLE_WEBP_PATH.read_bytes()
+
+
+@pytest.fixture
+def corrupted_image_bytes(sample_jpg_bytes: bytes) -> bytes:
+    # A real JPEG's opening bytes only — not enough for Pillow to decode a
+    # complete image, so it fails to load (verified: truncating to 50 bytes
+    # raises OSError "Truncated File Read"). Derived from the real fixture,
+    # not synthetic content.
+    return sample_jpg_bytes[:50]
 
 
 @pytest.fixture
