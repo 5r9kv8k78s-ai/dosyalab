@@ -17,6 +17,7 @@ from app.services.conversion import (
     submit_merge_pdf_job,
     submit_pdf_to_docx_job,
     submit_pdf_to_xlsx_job,
+    submit_protect_pdf_job,
     submit_reorder_pages_job,
     submit_rotate_pdf_job,
     submit_split_pdf_job,
@@ -325,6 +326,31 @@ async def convert_watermark_pdf(
 ) -> ConvertJobCreated:
     try:
         job = await submit_watermark_pdf_job(file, text, opacity, font_size, rotation, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/protect-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_protect_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    user_password: str = Form(...),
+    owner_password: str | None = Form(None),
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_protect_pdf_job(file, user_password, owner_password, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",
