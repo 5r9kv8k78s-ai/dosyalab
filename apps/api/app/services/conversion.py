@@ -44,6 +44,7 @@ COMPRESS_PDF_SLUG = "compress-pdf"
 ROTATE_PDF_SLUG = "rotate-pdf"
 DELETE_PAGES_SLUG = "delete-pages"
 EXTRACT_PAGES_SLUG = "extract-pages"
+REORDER_PAGES_SLUG = "reorder-pages"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -497,6 +498,58 @@ async def submit_extract_pages_job(
         extra={
             "job_id": job.id,
             "converter_slug": EXTRACT_PAGES_SLUG,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_reorder_pages_job(
+    file: UploadFile, order: str, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create a reorder-pages job for it.
+
+    `order` is a required, 1-indexed comma-separated permutation of every
+    page in the document — a subset or duplicate list is rejected here
+    before the job even starts, mirroring the check `PdfEngine.reorder_pages`
+    performs itself.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(saved_path)
+        zero_indexed_order = parse_page_list(order, field_name="order")
+        if not zero_indexed_order:
+            raise PdfValidationError("order must not be empty.")
+        validate_pages_in_range(zero_indexed_order, page_count, field_name="order")
+        if len(zero_indexed_order) != page_count or set(zero_indexed_order) != set(
+            range(page_count)
+        ):
+            raise PdfValidationError("order must be a permutation of every page in the document.")
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(json.dumps({"order": zero_indexed_order}))
+
+    download_filename = f"{Path(original_filename).stem}_reordered.pdf"
+    job = job_store.create(
+        module_slug=REORDER_PAGES_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": REORDER_PAGES_SLUG,
             "size_bytes": size_bytes,
         },
     )

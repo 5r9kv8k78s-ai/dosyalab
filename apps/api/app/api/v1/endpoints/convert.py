@@ -17,6 +17,7 @@ from app.services.conversion import (
     submit_merge_pdf_job,
     submit_pdf_to_docx_job,
     submit_pdf_to_xlsx_job,
+    submit_reorder_pages_job,
     submit_rotate_pdf_job,
     submit_split_pdf_job,
 )
@@ -272,6 +273,30 @@ async def convert_extract_pages(
 ) -> ConvertJobCreated:
     try:
         job = await submit_extract_pages_job(file, pages, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/reorder-pages",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_reorder_pages(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    order: str = Form(...),
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_reorder_pages_job(file, order, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",
