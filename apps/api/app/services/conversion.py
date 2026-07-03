@@ -52,6 +52,7 @@ UNLOCK_PDF_SLUG = "unlock-pdf"
 PDF_TO_IMAGES_SLUG = "pdf-to-images"
 _ALLOWED_PDF_TO_IMAGE_FORMATS = {"png", "jpg", "jpeg"}
 EXTRACT_IMAGES_SLUG = "extract-images"
+EXTRACT_TEXT_SLUG = "extract-text"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -786,6 +787,50 @@ async def submit_extract_images_job(file: UploadFile, settings: Settings) -> Con
             "job_id": job.id,
             "converter_slug": EXTRACT_IMAGES_SLUG,
             "pages": page_count,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_extract_text_job(
+    file: UploadFile, pages: str | None, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create an extract-text job for it.
+
+    `pages` is optional and 1-indexed; omitted means every page.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(saved_path)
+        zero_indexed_pages = parse_page_list(pages, field_name="pages")
+        if zero_indexed_pages is not None:
+            validate_pages_in_range(zero_indexed_pages, page_count, field_name="pages")
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(json.dumps({"pages": zero_indexed_pages}))
+
+    download_filename = f"{Path(original_filename).stem}.txt"
+    job = job_store.create(
+        module_slug=EXTRACT_TEXT_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": EXTRACT_TEXT_SLUG,
             "size_bytes": size_bytes,
         },
     )
