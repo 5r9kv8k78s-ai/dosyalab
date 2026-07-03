@@ -41,7 +41,11 @@ export function FileTypeIcon({ type, size = 40, label = true, className }: FileT
       className={cn(className)}
     >
       <path d="M23 6L31 14V34H9V6H23Z" fill={style.tint} stroke={style.color} strokeWidth="1.5" />
-      <path d="M23 6L31 14H24C23.4477 14 23 13.5523 23 13V6Z" fill={style.color} fillOpacity="0.25" />
+      <path
+        d="M23 6L31 14H24C23.4477 14 23 13.5523 23 13V6Z"
+        fill={style.color}
+        fillOpacity="0.25"
+      />
       <rect x="13" y="21" width="14" height="2" rx="1" fill={style.color} fillOpacity="0.5" />
       <rect x="13" y="26" width="14" height="2" rx="1" fill={style.color} fillOpacity="0.5" />
       {label && (

@@ -273,12 +273,7 @@ export function ToolCard({ tool }: { tool: ToolConfig }) {
         setState({ ...initialStateFor(tool), stage: 'ready', files, fieldValues });
       }
     },
-    [
-      startConversion,
-      t.errors,
-      tool,
-      toolTitle,
-    ],
+    [startConversion, t.errors, tool, toolTitle],
   );
 
   const updateField = useCallback((name: string, value: string) => {

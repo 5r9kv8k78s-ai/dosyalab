@@ -156,50 +156,53 @@ export function MergePdfCard() {
     };
   }, [clearTimers]);
 
-  const pollStatus = useCallback((jobId: string) => {
-    getConversionStatus(jobId)
-      .then(async (job) => {
-        if (!isMountedRef.current) return;
+  const pollStatus = useCallback(
+    (jobId: string) => {
+      getConversionStatus(jobId)
+        .then(async (job) => {
+          if (!isMountedRef.current) return;
 
-        if (job.status === 'completed') {
-          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
-          setState((prev) => ({ ...prev, stage: 'preparing-download' }));
-          try {
-            await downloadConversionResult(jobId, job.filename);
-            if (!isMountedRef.current) return;
-            setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
-          } catch (error) {
-            if (!isMountedRef.current) return;
+          if (job.status === 'completed') {
+            if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+            setState((prev) => ({ ...prev, stage: 'preparing-download' }));
+            try {
+              await downloadConversionResult(jobId, job.filename);
+              if (!isMountedRef.current) return;
+              setState((prev) => ({ ...prev, stage: 'completed', resultFilename: job.filename }));
+            } catch (error) {
+              if (!isMountedRef.current) return;
+              setState((prev) => ({
+                ...prev,
+                stage: 'error',
+                errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
+              }));
+            }
+            return;
+          }
+
+          if (job.status === 'failed') {
+            if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
             setState((prev) => ({
               ...prev,
               stage: 'error',
-              errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
+              errorMessage: job.error ?? t.errors.conversionFailedTryDifferent,
             }));
+            return;
           }
-          return;
-        }
 
-        if (job.status === 'failed') {
-          if (stageAdvanceTimeoutRef.current) clearTimeout(stageAdvanceTimeoutRef.current);
+          pollTimeoutRef.current = setTimeout(() => pollStatus(jobId), POLL_INTERVAL_MS);
+        })
+        .catch((error) => {
+          if (!isMountedRef.current) return;
           setState((prev) => ({
             ...prev,
             stage: 'error',
-            errorMessage: job.error ?? t.errors.conversionFailedTryDifferent,
+            errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
           }));
-          return;
-        }
-
-        pollTimeoutRef.current = setTimeout(() => pollStatus(jobId), POLL_INTERVAL_MS);
-      })
-      .catch((error) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => ({
-          ...prev,
-          stage: 'error',
-          errorMessage: friendlyMessageFor(error, t.errors.somethingWrong),
-        }));
-      });
-  }, [t.errors.conversionFailedTryDifferent, t.errors.somethingWrong]);
+        });
+    },
+    [t.errors.conversionFailedTryDifferent, t.errors.somethingWrong],
+  );
 
   const startConversion = useCallback(
     (files: File[]) => {
@@ -320,7 +323,7 @@ export function MergePdfCard() {
                   </span>
                   <button
                     type="button"
-                    className="focus-ring rounded p-1 text-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                    className="focus-ring text-muted hover:text-foreground rounded p-1 disabled:pointer-events-none disabled:opacity-30"
                     disabled={index === 0}
                     aria-label={t.buttons.moveFileUp(file.name)}
                     onClick={() => moveSelectedFile(index, -1)}
@@ -329,7 +332,7 @@ export function MergePdfCard() {
                   </button>
                   <button
                     type="button"
-                    className="focus-ring rounded p-1 text-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                    className="focus-ring text-muted hover:text-foreground rounded p-1 disabled:pointer-events-none disabled:opacity-30"
                     disabled={index === state.files.length - 1}
                     aria-label={t.buttons.moveFileDown(file.name)}
                     onClick={() => moveSelectedFile(index, 1)}

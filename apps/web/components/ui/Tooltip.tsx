@@ -24,7 +24,7 @@ export function Tooltip({ content, children, side = 'top', className }: TooltipP
           side={side}
           sideOffset={6}
           className={cn(
-            'z-tooltip rounded-md bg-foreground px-2.5 py-1.5 text-small text-surface shadow-md data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out',
+            'z-tooltip bg-foreground text-small text-surface data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out rounded-md px-2.5 py-1.5 shadow-md',
             className,
           )}
         >

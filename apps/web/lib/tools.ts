@@ -10,15 +10,10 @@ export type ToolSlug = keyof Translations['tools'];
  * label/placeholder/hint in `t.toolFields` (see lib/i18n/tr.ts). */
 export type ToolFieldKey = keyof Translations['toolFields'];
 
-export type ToolCategory = 'convert' | 'organize' | 'optimize' | 'security' | 'extract';
-
-export const TOOL_CATEGORIES: ToolCategory[] = [
-  'convert',
-  'organize',
-  'optimize',
-  'security',
-  'extract',
-];
+/** Fixed left-to-right order for the four category chips — a `const` array
+ * rather than derived from `TOOLS`, since a category (Excel, today) can be
+ * legitimately empty and still needs to appear in the selector. */
+export const FILE_CATEGORIES: FileType[] = ['pdf', 'word', 'excel', 'image'];
 
 export interface ToolFieldConfig {
   name: string;
@@ -32,10 +27,14 @@ export interface ToolConfig {
    * Also used to look up this tool's title/description in the i18n tree
    * (`t.tools[slug]`) — see lib/i18n/tr.ts. */
   slug: ToolSlug;
-  category: ToolCategory;
+  /** Drives both the tool's icon color (see FileTypeIcon) and which of the
+   * four category chips (PDF/Word/Excel/Görseller) surfaces it — grouped by
+   * the tool's *input* file type, not its output. */
   fileType: FileType;
   accept: string;
   multiple: boolean;
+  /** Only meaningful when `multiple` is true — defaults to 1. */
+  minFiles?: number;
   /** Extra form fields sent alongside the file(s), in addition to file/files.
    * Each field's label/placeholder/hint is looked up in the i18n tree via
    * `t.toolFields["{slug}.{name}"]` — see lib/i18n/tr.ts. */
@@ -53,52 +52,49 @@ export function toolFieldKey(slug: ToolSlug, fieldName: string): ToolFieldKey {
 const PDF_ACCEPT = 'application/pdf,.pdf';
 
 export const TOOLS: ToolConfig[] = [
-  // Convert
-  {
-    slug: 'pdf-to-docx',
-    category: 'convert',
-    fileType: 'pdf',
-    accept: PDF_ACCEPT,
-    multiple: false,
-    fields: [],
-  },
+  // Word input
   {
     slug: 'docx-to-pdf',
-    category: 'convert',
     fileType: 'word',
     accept: '.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     multiple: false,
     fields: [],
   },
-  {
-    slug: 'pdf-to-xlsx',
-    category: 'convert',
-    fileType: 'pdf',
-    accept: PDF_ACCEPT,
-    multiple: false,
-    fields: [],
-  },
+
+  // Image input
   {
     slug: 'images-to-pdf',
-    category: 'convert',
     fileType: 'image',
     accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp',
     multiple: true,
     fields: [],
   },
 
-  // Organize
+  // PDF input
+  {
+    slug: 'pdf-to-docx',
+    fileType: 'pdf',
+    accept: PDF_ACCEPT,
+    multiple: false,
+    fields: [],
+  },
+  {
+    slug: 'pdf-to-xlsx',
+    fileType: 'pdf',
+    accept: PDF_ACCEPT,
+    multiple: false,
+    fields: [],
+  },
   {
     slug: 'merge-pdf',
-    category: 'organize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: true,
+    minFiles: 2,
     fields: [],
   },
   {
     slug: 'split-pdf',
-    category: 'organize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -106,7 +102,6 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'delete-pages',
-    category: 'organize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -114,7 +109,6 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'extract-pages',
-    category: 'organize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -122,17 +116,13 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'reorder-pages',
-    category: 'organize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
     fields: [{ name: 'order', type: 'text', required: true }],
   },
-
-  // Optimize
   {
     slug: 'compress-pdf',
-    category: 'optimize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -140,7 +130,6 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'rotate-pdf',
-    category: 'optimize',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -149,19 +138,19 @@ export const TOOLS: ToolConfig[] = [
       { name: 'pages', type: 'text' },
     ],
   },
-
-  // Security
   {
     slug: 'watermark-pdf',
-    category: 'security',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
-    fields: [{ name: 'text', type: 'text', required: true }],
+    fields: [
+      { name: 'text', type: 'text', required: true },
+      { name: 'font_size', type: 'number', defaultValue: '40' },
+      { name: 'opacity', type: 'number', defaultValue: '0.3' },
+    ],
   },
   {
     slug: 'protect-pdf',
-    category: 'security',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -169,17 +158,13 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'unlock-pdf',
-    category: 'security',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
     fields: [{ name: 'password', type: 'password', required: true }],
   },
-
-  // Extract
   {
     slug: 'pdf-to-images',
-    category: 'extract',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -190,7 +175,6 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'extract-images',
-    category: 'extract',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
@@ -198,10 +182,17 @@ export const TOOLS: ToolConfig[] = [
   },
   {
     slug: 'extract-text',
-    category: 'extract',
     fileType: 'pdf',
     accept: PDF_ACCEPT,
     multiple: false,
     fields: [{ name: 'pages', type: 'text' }],
   },
 ];
+
+/** Groups tools by `fileType` for the category-chip UI (PDF / Word / Excel /
+ * Görseller). There is currently no tool whose *input* is an Excel file, so
+ * that group can legitimately be empty — the UI shows `categories.emptyState`
+ * rather than force-fitting an output-only tool (like PDF → Excel) into it. */
+export function toolsByFileType(fileType: FileType): ToolConfig[] {
+  return TOOLS.filter((tool) => tool.fileType === fileType);
+}

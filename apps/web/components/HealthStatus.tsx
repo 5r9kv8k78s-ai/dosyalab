@@ -54,11 +54,14 @@ export function HealthStatus() {
   return (
     <Badge
       variant={VARIANT_BY_STATUS[status]}
-      className="gap-2 border bg-surface py-1 shadow-sm"
+      className="bg-surface gap-2 border py-1 shadow-sm"
       role="status"
       aria-live="polite"
     >
-      <span className={cn('h-2 w-2 rounded-full', DOT_COLOR_BY_STATUS[status])} aria-hidden="true" />
+      <span
+        className={cn('h-2 w-2 rounded-full', DOT_COLOR_BY_STATUS[status])}
+        aria-hidden="true"
+      />
       {labelByStatus[status]}
     </Badge>
   );

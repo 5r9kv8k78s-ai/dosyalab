@@ -18,10 +18,10 @@ export function Modal({ open, onOpenChange, title, description, children, classN
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-overlay bg-foreground/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
+        <Dialog.Overlay className="z-overlay bg-foreground/40 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out fixed inset-0 backdrop-blur-sm" />
         <Dialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-modal w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95',
+            'z-modal border-border bg-surface data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 fixed left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border p-6 shadow-xl focus:outline-none',
             className,
           )}
         >
@@ -29,12 +29,15 @@ export function Modal({ open, onOpenChange, title, description, children, classN
             <div>
               <Dialog.Title className="text-h3 text-foreground">{title}</Dialog.Title>
               {description && (
-                <Dialog.Description className="mt-1 text-small text-muted">
+                <Dialog.Description className="text-small text-muted mt-1">
                   {description}
                 </Dialog.Description>
               )}
             </div>
-            <Dialog.Close className="focus-ring shrink-0 rounded-md p-1 text-muted hover:bg-background" aria-label="Close">
+            <Dialog.Close
+              className="focus-ring text-muted hover:bg-background shrink-0 rounded-md p-1"
+              aria-label="Close"
+            >
               <X className="h-4 w-4" aria-hidden="true" />
             </Dialog.Close>
           </div>

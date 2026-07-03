@@ -32,8 +32,7 @@ const iconColorByVariant = {
 } as const;
 
 export interface AlertProps
-  extends HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof alertVariants> {
+  extends HTMLAttributes<HTMLDivElement>, VariantProps<typeof alertVariants> {
   title?: string;
 }
 
@@ -47,7 +46,10 @@ export function Alert({ className, variant, title, children, ...props }: AlertPr
       className={cn(alertVariants({ variant: resolved }), className)}
       {...props}
     >
-      <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', iconColorByVariant[resolved])} aria-hidden="true" />
+      <Icon
+        className={cn('mt-0.5 h-4 w-4 shrink-0', iconColorByVariant[resolved])}
+        aria-hidden="true"
+      />
       <div className="text-foreground">
         {title && <p className={cn('font-medium', iconColorByVariant[resolved])}>{title}</p>}
         <div className={title ? 'mt-1' : ''}>{children}</div>

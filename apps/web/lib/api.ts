@@ -1,4 +1,5 @@
 import { detectBrowserLocale, readStoredLocale, translations } from '@/lib/i18n';
+import { triggerBrowserDownload } from '@/lib/utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -323,19 +324,20 @@ export async function getConversionStatus(jobId: string): Promise<ConvertJobStat
 }
 
 /** Fetches the converted file and triggers a browser save-as download. */
-export async function downloadConversionResult(jobId: string, filename: string): Promise<void> {
+/** Fetches the converted file's bytes without triggering a save — callers
+ * that need to offer a "download again" affordance (the file is deleted
+ * server-side right after the first successful download, so a second fetch
+ * would 404) can hold onto the returned blob and re-save it locally via
+ * `triggerBrowserDownload` in lib/utils.ts. */
+export async function fetchConversionResultBlob(jobId: string): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}/download`);
   if (!response.ok) {
     throw new ApiError(currentTranslations().errors.downloadFailed, response.status);
   }
+  return response.blob();
+}
 
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(objectUrl);
+export async function downloadConversionResult(jobId: string, filename: string): Promise<void> {
+  const blob = await fetchConversionResultBlob(jobId);
+  triggerBrowserDownload(blob, filename);
 }

@@ -17,11 +17,11 @@ export function Progress({ value, className, showShimmer = true, ...aria }: Prog
       aria-valuenow={Math.round(clamped)}
       aria-valuemin={0}
       aria-valuemax={100}
-      className={cn('h-2 w-full overflow-hidden rounded-full bg-border', className)}
+      className={cn('bg-border h-2 w-full overflow-hidden rounded-full', className)}
       {...aria}
     >
       <div
-        className="relative h-full rounded-full bg-primary transition-[width] duration-slow ease-out"
+        className="bg-primary duration-slow relative h-full rounded-full transition-[width] ease-out"
         style={{ width: `${clamped}%` }}
       >
         {showShimmer && (
@@ -49,8 +49,8 @@ export function StepDots({ total, currentIndex, className }: StepDotsProps) {
           <span
             key={index}
             className={cn(
-              'h-1.5 rounded-full transition-all duration-slow',
-              isActive ? 'w-5 bg-primary' : isDone ? 'w-1.5 bg-primary' : 'w-1.5 bg-border',
+              'duration-slow h-1.5 rounded-full transition-all',
+              isActive ? 'bg-primary w-5' : isDone ? 'bg-primary w-1.5' : 'bg-border w-1.5',
             )}
           />
         );

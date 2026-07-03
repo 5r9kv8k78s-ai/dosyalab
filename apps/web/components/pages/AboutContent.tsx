@@ -13,7 +13,7 @@ export function AboutContent() {
       <p>{about.paragraph2}</p>
       <p>
         {about.paragraph3Prefix}
-        <a href="/contact" className="focus-ring rounded font-medium text-primary underline">
+        <a href="/contact" className="focus-ring text-primary rounded font-medium underline">
           {about.contactLinkText}
         </a>
         {about.paragraph3Suffix}

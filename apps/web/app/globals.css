@@ -8,43 +8,47 @@
  * Colors are stored as space-separated RGB components (not hex) so Tailwind
  * can apply opacity modifiers, e.g. `bg-primary/10` — see the `rgb(var(...)
  * / <alpha-value>)` pattern in tailwind.config.ts.
+ *
+ * Light values match the redesign's fixed palette (#FAFAFA background,
+ * #4F46E5 primary, #16A34A success, #E5E7EB border, #111827 text, #6B7280
+ * secondary text). Dark values aren't spec'd numerically — they're chosen to
+ * hold the same relationships (same primary hue brightened for contrast, a
+ * near-black surface stack, a matching neutral ladder) rather than inverting
+ * the light palette.
  */
 @layer base {
   :root {
     /* Color system */
-    --color-primary: 79 70 229; /* indigo-600 */
+    --color-primary: 79 70 229; /* #4F46E5 */
     --color-primary-hover: 67 56 202; /* indigo-700 */
     --color-primary-light: 238 242 255; /* indigo-50 */
     --color-on-primary: 255 255 255;
 
-    --color-secondary: 6 182 212; /* cyan-500 */
-    --color-secondary-hover: 8 145 178; /* cyan-600 */
-    --color-secondary-light: 236 254 255; /* cyan-50 */
+    --color-secondary: 6 182 212; /* cyan-500 — distinct brand accent, unrelated to "secondary text" */
+    --color-secondary-hover: 8 145 178;
+    --color-secondary-light: 236 254 255;
     --color-on-secondary: 255 255 255;
 
-    /* green/amber/red-700, not the more common 600 shades — verified against
-       WCAG AA (4.5:1) for text rendered on each color's "-bg" tint, since
-       that's how Alert/Badge/Toast render these (600 shades fell short:
-       success 3.15:1, danger 4.41:1 measured against their tint backgrounds). */
-    --color-success: 21 128 61; /* green-700 */
-    --color-success-bg: 240 253 244; /* green-50 */
-    --color-warning: 180 83 9; /* amber-700 */
-    --color-warning-bg: 255 251 235; /* amber-50 */
-    --color-danger: 185 28 28; /* red-700 */
-    --color-danger-bg: 254 242 242; /* red-50 */
+    --color-success: 22 163 74; /* #16A34A */
+    --color-success-bg: 240 253 244;
+    --color-warning: 180 83 9;
+    --color-warning-bg: 255 251 235;
+    --color-danger: 185 28 28;
+    --color-danger-bg: 254 242 242;
 
-    --color-background: 248 250 252; /* slate-50 */
+    --color-background: 250 250 250; /* #FAFAFA */
     --color-surface: 255 255 255;
-    --color-border: 226 232 240; /* slate-200 */
-    --color-foreground: 15 23 42; /* slate-900 */
-    --color-muted: 100 116 139; /* slate-500 */
-    --color-muted-foreground: 148 163 184; /* slate-400 */
+    --color-border: 229 231 235; /* #E5E7EB */
+    --color-foreground: 17 24 39; /* #111827 */
+    --color-muted: 107 114 128; /* #6B7280 — spec's "Secondary" text color */
+    --color-muted-foreground: 156 163 175;
 
     /* Radius scale */
     --radius-sm: 0.25rem;
     --radius-md: 0.5rem;
     --radius-lg: 0.75rem;
     --radius-xl: 1rem;
+    --radius-2xl: 1.5rem; /* 24px — the redesign's base "premium" radius */
     --radius-full: 9999px;
 
     /* Shadow system */
@@ -55,7 +59,7 @@
 
     /* Animation durations */
     --duration-fast: 120ms;
-    --duration-base: 200ms;
+    --duration-base: 180ms; /* redesign's default hover/transition speed */
     --duration-slow: 400ms;
 
     /* z-index scale */
@@ -65,6 +69,37 @@
     --z-modal: 50;
     --z-toast: 60;
     --z-tooltip: 70;
+  }
+
+  .dark {
+    --color-primary: 99 102 241; /* indigo-500, brightened for a dark surface */
+    --color-primary-hover: 129 140 248; /* indigo-400 */
+    --color-primary-light: 30 27 75; /* indigo-950 */
+    --color-on-primary: 255 255 255;
+
+    --color-secondary: 34 211 238; /* cyan-400 */
+    --color-secondary-hover: 103 232 249;
+    --color-secondary-light: 8 51 68;
+    --color-on-secondary: 8 51 68;
+
+    --color-success: 34 197 94; /* green-500 */
+    --color-success-bg: 6 46 30;
+    --color-warning: 251 191 36;
+    --color-warning-bg: 69 45 6;
+    --color-danger: 248 113 113;
+    --color-danger-bg: 69 14 14;
+
+    --color-background: 9 9 11; /* zinc-950 */
+    --color-surface: 22 22 25;
+    --color-border: 39 39 42; /* zinc-800 */
+    --color-foreground: 250 250 250;
+    --color-muted: 161 161 170; /* zinc-400 */
+    --color-muted-foreground: 113 113 122; /* zinc-500 */
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 8px -2px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 24px -6px rgb(0 0 0 / 0.5), 0 4px 8px -4px rgb(0 0 0 / 0.3);
+    --shadow-xl: 0 24px 48px -12px rgb(0 0 0 / 0.6);
   }
 }
 
@@ -90,7 +125,7 @@
 
 @layer utilities {
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+    @apply focus-visible:ring-primary focus-visible:ring-offset-surface outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
   }
 }
 

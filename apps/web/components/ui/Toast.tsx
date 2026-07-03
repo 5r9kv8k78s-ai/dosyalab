@@ -64,26 +64,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 if (!open) dismiss(item.id);
               }}
               className={cn(
-                'flex items-start gap-3 rounded-lg border p-4 shadow-lg data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[swipe=end]:animate-out',
+                'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[swipe=end]:animate-out flex items-start gap-3 rounded-lg border p-4 shadow-lg',
                 classByVariant[item.variant],
               )}
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <div className="flex-1 text-small text-foreground">
+              <div className="text-small text-foreground flex-1">
                 <ToastPrimitive.Title className="font-medium">{item.title}</ToastPrimitive.Title>
                 {item.description && (
-                  <ToastPrimitive.Description className="mt-0.5 text-muted">
+                  <ToastPrimitive.Description className="text-muted mt-0.5">
                     {item.description}
                   </ToastPrimitive.Description>
                 )}
               </div>
-              <ToastPrimitive.Close className="focus-ring shrink-0 rounded p-0.5" aria-label="Dismiss">
+              <ToastPrimitive.Close
+                className="focus-ring shrink-0 rounded p-0.5"
+                aria-label="Dismiss"
+              >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </ToastPrimitive.Close>
             </ToastPrimitive.Root>
           );
         })}
-        <ToastPrimitive.Viewport className="fixed bottom-0 right-0 z-toast flex w-full max-w-sm flex-col gap-2 p-4 outline-none" />
+        <ToastPrimitive.Viewport className="z-toast fixed bottom-0 right-0 flex w-full max-w-sm flex-col gap-2 p-4 outline-none" />
       </ToastPrimitive.Provider>
     </ToastContext.Provider>
   );

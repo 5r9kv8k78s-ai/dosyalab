@@ -15,7 +15,9 @@ export interface SpinnerProps {
 }
 
 export function Spinner({ size = 'md', className, label }: SpinnerProps) {
-  const icon = <Loader2 className={cn('animate-spin', sizeMap[size], className)} aria-hidden="true" />;
+  const icon = (
+    <Loader2 className={cn('animate-spin', sizeMap[size], className)} aria-hidden="true" />
+  );
 
   if (!label) return icon;
 

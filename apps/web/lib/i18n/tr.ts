@@ -12,30 +12,43 @@ export const tr = {
 
   hero: {
     title: 'Belgelerinizi saniyeler içinde dönüştürün.',
-    subtitle: 'PDF, Word, Excel ve görsellerinizi güvenli şekilde dönüştürün.',
+    subtitle:
+      'PDF, Word, Excel ve görsellerinizi güvenli, hızlı ve tamamen tarayıcınız üzerinden dönüştürün.',
     privacyNote: 'Dosyalarınız işlem tamamlandıktan sonra otomatik silinir.',
+    badgeFast: 'Çok Hızlı',
+    badgeSecure: 'Güvenli',
+    badgeNoInstall: 'Kurulum Gerektirmez',
   },
 
   nav: {
     footerAriaLabel: 'Alt bilgi',
+    mainAriaLabel: 'Ana menü',
+    tools: 'Araçlar',
+    api: 'API',
+    pricing: 'Fiyatlandırma',
     about: 'Hakkımızda',
     privacy: 'Gizlilik Politikası',
     terms: 'Kullanım Şartları',
     contact: 'İletişim',
+    github: 'GitHub',
+  },
+
+  theme: {
+    switchToLight: 'Açık temaya geç',
+    switchToDark: 'Koyu temaya geç',
   },
 
   categories: {
-    tabsAriaLabel: 'Araç kategorileri',
-    all: 'Tümü',
-    convert: 'Dönüştür',
-    organize: 'Düzenle',
-    optimize: 'Optimize Et',
-    security: 'Güvenlik',
-    extract: 'Çıkart',
+    sectionAriaLabel: 'Dosya kategorisi seçin',
+    pdf: 'PDF',
+    word: 'Word',
+    excel: 'Excel',
+    image: 'Görseller',
+    emptyState: 'Bu kategoride henüz araç bulunmuyor.',
   },
 
-  toolsGrid: {
-    ariaLabel: 'Kullanılabilir dönüştürme araçları',
+  toolChips: {
+    ariaLabel: 'Araç seçin',
   },
 
   tools: {
@@ -128,6 +141,8 @@ export const tr = {
       placeholder: 'boş bırakılırsa tüm sayfalar',
     },
     'watermark-pdf.text': { label: 'Filigran metni' },
+    'watermark-pdf.font_size': { label: 'Boyut' },
+    'watermark-pdf.opacity': { label: 'Opaklık', hint: '0 ile 1 arası' },
     'protect-pdf.user_password': { label: 'Şifre' },
     'unlock-pdf.password': { label: 'Mevcut şifre' },
     'pdf-to-images.image_format': { label: 'Format (png/jpg)' },
@@ -139,12 +154,13 @@ export const tr = {
   },
 
   upload: {
-    dropHere: 'Dosyanızı buraya sürükleyin',
+    dropHere: 'Dosyanızı buraya bırakın',
     or: 'veya',
-    chooseFile: 'Dosya Seç',
+    chooseFile: 'Dosya seçin',
+    maxSizeLabel: 'Maksimum 100 MB',
     supportedTypes: 'Desteklenen dosya türleri',
     dropZoneAriaLabel: (toolTitle: string) =>
-      `${toolTitle} için dosyanızı buraya sürükleyin veya Dosya Seç ile göz atın`,
+      `${toolTitle} için dosyanızı buraya bırakın veya Dosya seçin ile göz atın`,
     mergeDropZoneAriaLabel: 'Birleştirmek için iki veya daha fazla PDF sürükleyin veya göz atın',
     mergeHint: 'İki veya daha fazla PDF — her biri en fazla 100MB',
     selectedCount: (count: number) => `${count} PDF seçildi — gerekirse sırasını değiştirin`,
@@ -155,6 +171,7 @@ export const tr = {
     processing: 'İşleniyor…',
     converting: 'Dönüştürülüyor…',
     preparing: 'Hazırlanıyor…',
+    downloading: 'İndiriliyor…',
     completed: 'Tamamlandı',
     download: 'İndir',
     fileUploading: (name: string) => `${name} yükleniyor…`,
@@ -189,10 +206,16 @@ export const tr = {
     tryAgain: 'Tekrar Dene',
     download: 'İndir',
     convertAnotherFile: 'Başka bir dosya dönüştür',
+    newConversion: 'Yeni Dönüştürme',
     mergePdfs: "PDF'leri Birleştir",
     mergeMoreFiles: 'Daha fazla dosya birleştir',
     moveFileUp: (fileName: string) => `${fileName} dosyasını yukarı taşı`,
     moveFileDown: (fileName: string) => `${fileName} dosyasını aşağı taşı`,
+    removeFile: (fileName: string) => `${fileName} dosyasını kaldır`,
+  },
+
+  success: {
+    title: 'Dosyanız hazır.',
   },
 
   status: {
@@ -223,20 +246,22 @@ export const tr = {
     contact: {
       metaTitle: 'İletişim — DosyaLab',
       heading: 'İletişim',
-      paragraph1: 'DosyaLab yeni ve aktif olarak geliştirilen bir proje; henüz özel destek kanalları kurulmadı.',
+      paragraph1:
+        'DosyaLab yeni ve aktif olarak geliştirilen bir proje; henüz özel destek kanalları kurulmadı.',
       paragraph2:
         'Gerçek iletişim bilgileri — destek e-postası, sorun takip sistemi veya geri bildirim formu — buraya eklenecek.',
     },
     privacy: {
       metaTitle: 'Gizlilik Politikası — DosyaLab',
       heading: 'Gizlilik Politikası',
-      intro: 'Bu sayfa, DosyaLab kullanırken dosyalarınıza ve verilerinize gerçekte ne olduğunu açıklar.',
+      intro:
+        'Bu sayfa, DosyaLab kullanırken dosyalarınıza ve verilerinize gerçekte ne olduğunu açıklar.',
       filesTitle: 'Yüklediğiniz dosyalar',
       filesBody:
         'Dosyalar yalnızca talep ettiğiniz dönüştürmeyi çalıştırmak için sunucuya yüklenir. Dönüştürülen sonuç, siz indirir indirmez hemen silinir. Bir dönüştürme hiç indirilmezse, hem orijinal yükleme hem de oluşturulan dosya periyodik bir temizlik taramasında otomatik olarak silinir — hiçbir şey süresiz saklanmaz.',
       accountsTitle: 'Hesaplar ve takip',
       accountsBody:
-        "DosyaLab hesap gerektirmez ve analitik ya da reklam takip araçları kullanmaz. Uygulamanın yaptığı tek istekler, dosyanızı yüklemek, dönüştürmeyi çalıştırmak ve sonucu size geri sunmak için gereken isteklerdir.",
+        'DosyaLab hesap gerektirmez ve analitik ya da reklam takip araçları kullanmaz. Uygulamanın yaptığı tek istekler, dosyanızı yüklemek, dönüştürmeyi çalıştırmak ve sonucu size geri sunmak için gereken isteklerdir.',
       changesTitle: 'Değişiklikler',
       changesBody:
         'DosyaLab aktif olarak geliştiriliyor ve bu davranış değiştiğinde bu politika da güncellenecek.',
@@ -245,11 +270,21 @@ export const tr = {
       metaTitle: 'Kullanım Şartları — DosyaLab',
       heading: 'Kullanım Şartları',
       paragraph1:
-        "DosyaLab olduğu gibi, ücretsiz olarak sunulur; çalışma süresi veya kullanılabilirlik garantisi verilmez. Aktif olarak geliştirilmektedir ve özellikler, sınırlar ve davranış değişebilir.",
+        'DosyaLab olduğu gibi, ücretsiz olarak sunulur; çalışma süresi veya kullanılabilirlik garantisi verilmez. Aktif olarak geliştirilmektedir ve özellikler, sınırlar ve davranış değişebilir.',
       paragraph2:
-        'Yüklediğiniz dosyalardan ve bunları dönüştürüp indirme hakkına sahip olmaktan siz sorumlusunuz. DosyaLab\'ı, işleme izniniz olmayan dosyalar için kullanmayın.',
+        "Yüklediğiniz dosyalardan ve bunları dönüştürüp indirme hakkına sahip olmaktan siz sorumlusunuz. DosyaLab'ı, işleme izniniz olmayan dosyalar için kullanmayın.",
       paragraph3:
         'Bu, hukuki tavsiye yerine geçmeyen minimal bir başlangıç politikasıdır — ürün olgunlaştıkça genişletilecektir.',
+    },
+    api: {
+      metaTitle: 'API — DosyaLab',
+      heading: 'API',
+      body: 'Programatik erişim için bir DosyaLab API’si üzerinde çalışıyoruz. Duyurulduğunda burada yer alacak.',
+    },
+    pricing: {
+      metaTitle: 'Fiyatlandırma — DosyaLab',
+      heading: 'Fiyatlandırma',
+      body: 'DosyaLab şu an için tamamen ücretsiz. Ücretli planlar eklendiğinde detaylar burada olacak.',
     },
   },
 };

@@ -4,7 +4,7 @@ export function StaticPage({ title, children }: { title: string; children: React
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-h1">{title}</h1>
-      <div className="mt-6 space-y-4 text-body text-foreground">{children}</div>
+      <div className="text-body text-foreground mt-6 space-y-4">{children}</div>
     </main>
   );
 }

@@ -4,6 +4,7 @@ import tailwindcssAnimate from 'tailwindcss-animate';
 const withOpacity = (variable: string) => `rgb(var(${variable}) / <alpha-value>)`;
 
 const config: Config = {
+  darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -58,13 +59,17 @@ const config: Config = {
         sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       // Typography scale tokens: text-display, text-h1, text-h2, text-h3,
-      // text-body, text-small, text-button.
+      // text-body, text-small, text-button, plus the redesign's dedicated
+      // hero/heroSubtitle/cardTitle sizes (56/22/18).
       fontSize: {
+        hero: ['3.5rem', { lineHeight: '1.08', fontWeight: '800', letterSpacing: '-0.02em' }],
         display: ['3rem', { lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em' }],
         h1: ['2.25rem', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.01em' }],
         h2: ['1.875rem', { lineHeight: '1.25', fontWeight: '700' }],
         h3: ['1.5rem', { lineHeight: '1.3', fontWeight: '600' }],
-        body: ['1rem', { lineHeight: '1.6', fontWeight: '400' }],
+        heroSubtitle: ['1.375rem', { lineHeight: '1.5', fontWeight: '400' }],
+        cardTitle: ['1.125rem', { lineHeight: '1.4', fontWeight: '600' }],
+        body: ['0.9375rem', { lineHeight: '1.6', fontWeight: '400' }],
         small: ['0.875rem', { lineHeight: '1.5', fontWeight: '400' }],
         button: ['0.9375rem', { lineHeight: '1', fontWeight: '600' }],
       },
@@ -73,6 +78,7 @@ const config: Config = {
         md: 'var(--radius-md)',
         lg: 'var(--radius-lg)',
         xl: 'var(--radius-xl)',
+        '2xl': 'var(--radius-2xl)',
         full: 'var(--radius-full)',
       },
       boxShadow: {
