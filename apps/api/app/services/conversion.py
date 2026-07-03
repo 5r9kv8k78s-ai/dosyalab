@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 PDF_TO_DOCX_SLUG = "pdf-to-docx"
 DOCX_TO_PDF_SLUG = "docx-to-pdf"
+PDF_TO_XLSX_SLUG = "pdf-to-xlsx"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -102,6 +103,44 @@ async def submit_docx_to_pdf_job(file: UploadFile, settings: Settings) -> Conver
             "job_id": job.id,
             "converter_slug": DOCX_TO_PDF_SLUG,
             "paragraphs": paragraph_count,
+            "size_bytes": size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_pdf_to_xlsx_job(file: UploadFile, settings: Settings) -> ConversionJob:
+    """Validate an uploaded PDF and create a conversion job for it.
+
+    Input format is the same as `submit_pdf_to_docx_job` (PDF), so this
+    reuses the same PDF validation helpers directly rather than duplicating
+    them — only the module slug and output extension differ.
+    """
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    storage = StorageService(upload_dir=settings.convert_upload_dir)
+    _file_id, source_path, size_bytes = await storage.save(file)
+
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        page_count = inspect_pdf(source_path)
+    except PdfValidationError:
+        source_path.unlink(missing_ok=True)
+        raise
+
+    download_filename = f"{Path(original_filename).stem}.xlsx"
+    job = job_store.create(
+        module_slug=PDF_TO_XLSX_SLUG,
+        source_path=source_path,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": PDF_TO_XLSX_SLUG,
+            "pages": page_count,
             "size_bytes": size_bytes,
         },
     )

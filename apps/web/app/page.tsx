@@ -1,5 +1,6 @@
 import { ShieldCheck } from 'lucide-react';
 import { ComingSoonCard } from '@/components/conversions/ComingSoonCard';
+import { PdfToExcelCard } from '@/components/conversions/PdfToExcelCard';
 import { PdfToWordCard } from '@/components/conversions/PdfToWordCard';
 import { WordToPdfCard } from '@/components/conversions/WordToPdfCard';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -27,11 +28,7 @@ export default function Home() {
           description="Combine images into a single PDF"
           icon={<FileTypeIcon type="image" size={40} />}
         />
-        <ComingSoonCard
-          title="PDF → Excel"
-          description="Extract PDF tables into a spreadsheet"
-          icon={<FileTypeIcon type="pdf" size={40} />}
-        />
+        <PdfToExcelCard />
       </section>
 
       <section className="border-primary/20 bg-primary-light mt-12 flex w-full max-w-2xl items-center gap-3 rounded-lg border px-5 py-4">

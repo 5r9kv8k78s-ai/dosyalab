@@ -11,6 +11,7 @@ from app.services.conversion import (
     run_conversion_job,
     submit_docx_to_pdf_job,
     submit_pdf_to_docx_job,
+    submit_pdf_to_xlsx_job,
 )
 from app.services.docx_validation import DocxValidationError
 from app.services.jobs import JobStatus, job_store
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/convert", tags=["convert"])
 _MEDIA_TYPE_BY_SUFFIX = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pdf": "application/pdf",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 _DEFAULT_MEDIA_TYPE = "application/octet-stream"
 
@@ -66,6 +68,29 @@ async def convert_docx_to_pdf(
     try:
         job = await submit_docx_to_pdf_job(file, settings)
     except DocxValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/pdf-to-xlsx",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_pdf_to_xlsx(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_pdf_to_xlsx_job(file, settings)
+    except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
