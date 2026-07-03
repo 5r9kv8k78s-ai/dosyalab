@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import shutil
 import uuid
@@ -37,6 +38,7 @@ DOCX_TO_PDF_SLUG = "docx-to-pdf"
 PDF_TO_XLSX_SLUG = "pdf-to-xlsx"
 IMAGES_TO_PDF_SLUG = "images-to-pdf"
 MERGE_PDF_SLUG = "merge-pdf"
+SPLIT_PDF_SLUG = "split-pdf"
 
 # pdf2docx exposes no progress callback (see pdf_to_docx.py), so while the
 # blocking convert() call runs in a worker thread we approximate progress by
@@ -255,6 +257,55 @@ async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> C
             "converter_slug": MERGE_PDF_SLUG,
             "file_count": len(files),
             "size_bytes": total_size_bytes,
+        },
+    )
+    return job
+
+
+async def submit_split_pdf_job(
+    file: UploadFile, pages_per_file: int, settings: Settings
+) -> ConversionJob:
+    """Validate an uploaded PDF and create a split job for it.
+
+    `source_path` is a per-job directory containing the saved PDF plus a
+    `params.json` sidecar (see `SplitPdfConverter.convert`) — the same
+    directory-based convention `submit_images_to_pdf_job` and
+    `submit_merge_pdf_job` use for multi-input jobs, extended here to also
+    carry non-file parameters through to the converter.
+    """
+    if pages_per_file < 1:
+        raise PdfValidationError("pages_per_file must be at least 1.")
+
+    original_filename = secure_filename(file.filename)
+    validate_pdf_extension(original_filename)
+
+    job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
+    storage = StorageService(upload_dir=job_upload_dir)
+
+    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
+        inspect_pdf(saved_path)
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
+
+    saved_path.rename(job_upload_dir / "source.pdf")
+    (job_upload_dir / "params.json").write_text(json.dumps({"pages_per_file": pages_per_file}))
+
+    download_filename = f"{Path(original_filename).stem}_split.zip"
+    job = job_store.create(
+        module_slug=SPLIT_PDF_SLUG,
+        source_path=job_upload_dir,
+        download_filename=download_filename,
+    )
+    logger.info(
+        "convert.job_created",
+        extra={
+            "job_id": job.id,
+            "converter_slug": SPLIT_PDF_SLUG,
+            "pages_per_file": pages_per_file,
+            "size_bytes": size_bytes,
         },
     )
     return job

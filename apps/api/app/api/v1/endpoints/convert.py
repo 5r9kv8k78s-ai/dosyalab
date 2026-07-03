@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
@@ -14,6 +14,7 @@ from app.services.conversion import (
     submit_merge_pdf_job,
     submit_pdf_to_docx_job,
     submit_pdf_to_xlsx_job,
+    submit_split_pdf_job,
 )
 from app.services.docx_validation import DocxValidationError
 from app.services.image_validation import ImageValidationError
@@ -31,6 +32,8 @@ _MEDIA_TYPE_BY_SUFFIX = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pdf": "application/pdf",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".zip": "application/zip",
+    ".txt": "text/plain",
 }
 _DEFAULT_MEDIA_TYPE = "application/octet-stream"
 
@@ -149,6 +152,30 @@ async def convert_merge_pdf(
                 "upload_filename": files[0].filename if files else None,
                 "reason": exc.message,
             },
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/split-pdf",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_split_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    pages_per_file: int = Form(1),
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_split_pdf_job(file, pages_per_file, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
