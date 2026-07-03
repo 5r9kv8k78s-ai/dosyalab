@@ -5,25 +5,34 @@ import {
   ApiError,
   downloadConversionResult,
   getConversionStatus,
-  submitPdfToDocxConversion,
+  submitToolConversion,
 } from '@/lib/api';
+import type { ToolConfig } from '@/lib/tools';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Dropzone } from '@/components/ui/Dropzone';
+import { Input } from '@/components/ui/Input';
 import { Progress, StepDots } from '@/components/ui/Progress';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
+
+// Generic, config-driven counterpart to the individual PdfToWordCard-style
+// components: same stage machine, same progress bands, same polling pattern,
+// but driven entirely by a `ToolConfig` (see lib/tools.ts) so every tool that
+// needs no bespoke UI (i.e. everything except Merge PDF's reorder step) can
+// share one implementation instead of seventeen near-identical files.
+//
+// Tools with extra form fields (rotation, page lists, passwords, ...) get an
+// extra "ready" stage between picking a file and submitting, so required
+// fields can be filled in first. Tools with no extra fields keep the old
+// auto-start-on-drop behavior exactly.
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const POLL_INTERVAL_MS = 800;
 
-// The backend has no real per-page progress signal for the conversion itself
-// (see apps/api/app/modules/converter/pdf_to_docx.py) — only upload has a
-// true byte-level percentage. So conversion is represented as named stages
-// with a bar that animates smoothly and continuously, never as a faked
-// precise number.
 type Stage =
   | 'idle'
+  | 'ready'
   | 'uploading'
   | 'processing'
   | 'creating-document'
@@ -38,7 +47,6 @@ const IN_FLIGHT_STAGES: Stage[] = [
   'preparing-download',
 ];
 
-// Ordered for the stage dots indicator.
 const STAGE_SEQUENCE: Stage[] = [
   'uploading',
   'processing',
@@ -47,12 +55,9 @@ const STAGE_SEQUENCE: Stage[] = [
   'completed',
 ];
 
-// Bar fill target per stage, as a percent of the bar's width. These are
-// narrative bands, not measurements — kept comfortably short of 100% until
-// the job is actually done, so the bar never appears to finish early then
-// freeze.
 const STAGE_BAND_END: Record<Stage, number> = {
   idle: 0,
+  ready: 0,
   uploading: 20,
   processing: 45,
   'creating-document': 75,
@@ -61,28 +66,16 @@ const STAGE_BAND_END: Record<Stage, number> = {
   error: 0,
 };
 
-// How long to sit on "Processing" before the label advances to "Creating
-// Word document". The backend doesn't expose a distinct signal for this
-// hand-off, so it's a fixed narrative delay rather than a derived number —
-// if the real job finishes first, the status poll short-circuits straight
-// to "Preparing download" regardless of where this timer is.
 const PROCESSING_TO_CREATING_DELAY_MS = 2500;
 
 interface State {
   stage: Stage;
-  fileName: string | null;
+  files: File[];
+  fieldValues: Record<string, string>;
   uploadProgress: number;
   resultFilename: string | null;
   errorMessage: string | null;
 }
-
-const initialState: State = {
-  stage: 'idle',
-  fileName: null,
-  uploadProgress: 0,
-  resultFilename: null,
-  errorMessage: null,
-};
 
 function friendlyMessageFor(error: unknown): string {
   if (error instanceof ApiError) {
@@ -91,15 +84,21 @@ function friendlyMessageFor(error: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-function stageLabel(state: State): string {
-  const name = state.fileName ?? 'file';
+function summarizeFileNames(files: File[]): string {
+  if (files.length === 0) return 'file';
+  if (files.length === 1) return files[0].name;
+  return `${files.length} files`;
+}
+
+function stageLabel(state: State, tool: ToolConfig): string {
+  const name = summarizeFileNames(state.files);
   switch (state.stage) {
     case 'uploading':
       return `Uploading ${name}…`;
     case 'processing':
       return `Processing ${name}…`;
     case 'creating-document':
-      return 'Creating Word document…';
+      return `Creating ${tool.title}…`;
     case 'preparing-download':
       return 'Preparing your download…';
     default:
@@ -109,15 +108,35 @@ function stageLabel(state: State): string {
 
 function barWidthFor(state: State): number {
   if (state.stage === 'uploading') {
-    // Real, precise data — bytes actually sent — so it's fine to track it
-    // exactly within the uploading band.
     return (state.uploadProgress / 100) * STAGE_BAND_END.uploading;
   }
   return STAGE_BAND_END[state.stage];
 }
 
-export function PdfToWordCard() {
-  const [state, setState] = useState<State>(initialState);
+function extensionsFromAccept(accept: string): string[] {
+  return accept
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith('.'));
+}
+
+function initialFieldValues(tool: ToolConfig): Record<string, string> {
+  return Object.fromEntries(tool.fields.map((field) => [field.name, field.defaultValue ?? '']));
+}
+
+function initialStateFor(tool: ToolConfig): State {
+  return {
+    stage: 'idle',
+    files: [],
+    fieldValues: initialFieldValues(tool),
+    uploadProgress: 0,
+    resultFilename: null,
+    errorMessage: null,
+  };
+}
+
+export function ToolCard({ tool }: { tool: ToolConfig }) {
+  const [state, setState] = useState<State>(() => initialStateFor(tool));
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
@@ -177,32 +196,11 @@ export function PdfToWordCard() {
   }, []);
 
   const startConversion = useCallback(
-    (file: File) => {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        setState({
-          ...initialState,
-          stage: 'error',
-          errorMessage: 'Only PDF files are supported for this conversion.',
-        });
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setState({
-          ...initialState,
-          stage: 'error',
-          errorMessage: 'That file is larger than the 100MB limit for PDF → Word.',
-        });
-        return;
-      }
-
+    (files: File[], fieldValues: Record<string, string>) => {
       clearTimers();
-      setState({
-        ...initialState,
-        stage: 'uploading',
-        fileName: file.name,
-      });
+      setState((prev) => ({ ...prev, stage: 'uploading', uploadProgress: 0 }));
 
-      submitPdfToDocxConversion(file, (percent) => {
+      submitToolConversion(tool.slug, files, fieldValues, tool.multiple, (percent) => {
         setState((prev) =>
           prev.stage === 'uploading' ? { ...prev, uploadProgress: percent } : prev,
         );
@@ -228,49 +226,125 @@ export function PdfToWordCard() {
           }));
         });
     },
-    [clearTimers, pollStatus],
+    [clearTimers, pollStatus, tool.multiple, tool.slug],
   );
 
   const handleFiles = useCallback(
     (fileList: FileList | null) => {
-      const file = fileList?.[0];
-      if (file) startConversion(file);
+      if (!fileList || fileList.length === 0) return;
+      let files = Array.from(fileList);
+      if (!tool.multiple) files = files.slice(0, 1);
+
+      const allowedExtensions = extensionsFromAccept(tool.accept);
+      const invalidFile = files.find(
+        (file) => !allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
+      );
+      if (invalidFile) {
+        setState({
+          ...initialStateFor(tool),
+          stage: 'error',
+          errorMessage: `${invalidFile.name} is not a supported file type for ${tool.title}.`,
+        });
+        return;
+      }
+      const oversizedFile = files.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+      if (oversizedFile) {
+        setState({
+          ...initialStateFor(tool),
+          stage: 'error',
+          errorMessage: `${oversizedFile.name} is larger than the 100MB limit.`,
+        });
+        return;
+      }
+
+      const fieldValues = initialFieldValues(tool);
+      if (tool.fields.length === 0) {
+        setState({ ...initialStateFor(tool), files });
+        startConversion(files, fieldValues);
+      } else {
+        setState({ ...initialStateFor(tool), stage: 'ready', files, fieldValues });
+      }
     },
-    [startConversion],
+    [startConversion, tool],
+  );
+
+  const updateField = useCallback((name: string, value: string) => {
+    setState((prev) => ({ ...prev, fieldValues: { ...prev.fieldValues, [name]: value } }));
+  }, []);
+
+  const missingRequiredField = tool.fields.some(
+    (field) => field.required && !state.fieldValues[field.name]?.trim(),
   );
 
   const isBusy = IN_FLIGHT_STAGES.includes(state.stage);
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
-        <FileTypeIcon type="pdf" size={40} />
+        <FileTypeIcon type={tool.fileType} size={40} />
         <div>
-          <CardTitle as="h2">PDF → Word</CardTitle>
-          <CardDescription>Convert a PDF into an editable .docx file</CardDescription>
+          <CardTitle as="h3">{tool.title}</CardTitle>
+          <CardDescription>{tool.description}</CardDescription>
         </div>
       </CardHeader>
 
       <Dropzone
-        accept="application/pdf,.pdf"
-        disabled={isBusy}
+        accept={tool.accept}
+        multiple={tool.multiple}
+        disabled={isBusy || state.stage === 'ready'}
         onFiles={handleFiles}
-        aria-label="Drop a PDF here, or click to browse, to convert it to Word"
+        aria-label={`Drop a file here, or click to browse, for ${tool.title}`}
+        className="flex-1"
       >
         {state.stage === 'idle' && (
-          <>
-            <p className="text-small font-medium text-foreground">
-              Drop a PDF here, or click to browse
+          <p className="text-small text-foreground font-medium">
+            Drop a file here, or click to browse
+          </p>
+        )}
+
+        {state.stage === 'ready' && (
+          <div
+            className="w-full max-w-xs space-y-3"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <p className="text-small text-foreground truncate font-medium">
+              {summarizeFileNames(state.files)}
             </p>
-            <p className="mt-1 text-small text-muted">Up to 100MB</p>
-          </>
+            {tool.fields.map((field) => (
+              <Input
+                key={field.name}
+                type={field.type}
+                label={field.label}
+                placeholder={field.placeholder}
+                hint={field.hint}
+                value={state.fieldValues[field.name] ?? ''}
+                onChange={(event) => updateField(field.name, event.target.value)}
+              />
+            ))}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={missingRequiredField}
+                onClick={() => startConversion(state.files, state.fieldValues)}
+              >
+                Start
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setState(initialStateFor(tool))}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         )}
 
         {isBusy && (
           <div className="w-full max-w-xs space-y-3" aria-live="polite">
-            <p className="text-small font-medium text-foreground">{stageLabel(state)}</p>
-            <Progress value={barWidthFor(state)} aria-label={stageLabel(state)} />
-            <StepDots total={STAGE_SEQUENCE.length} currentIndex={STAGE_SEQUENCE.indexOf(state.stage)} />
+            <p className="text-small text-foreground font-medium">{stageLabel(state, tool)}</p>
+            <Progress value={barWidthFor(state)} aria-label={stageLabel(state, tool)} />
+            <StepDots
+              total={STAGE_SEQUENCE.length}
+              currentIndex={STAGE_SEQUENCE.indexOf(state.stage)}
+            />
           </div>
         )}
 
@@ -280,10 +354,10 @@ export function PdfToWordCard() {
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            <p className="text-small font-medium text-success">
-              Converted — {state.resultFilename} downloaded
+            <p className="text-small text-success font-medium">
+              Done — {state.resultFilename} downloaded
             </p>
-            <Button size="sm" onClick={() => setState(initialState)}>
+            <Button size="sm" onClick={() => setState(initialStateFor(tool))}>
               Convert another file
             </Button>
           </div>
@@ -296,7 +370,7 @@ export function PdfToWordCard() {
             onKeyDown={(event) => event.stopPropagation()}
           >
             <Alert variant="danger">{state.errorMessage}</Alert>
-            <Button variant="outline" size="sm" onClick={() => setState(initialState)}>
+            <Button variant="outline" size="sm" onClick={() => setState(initialStateFor(tool))}>
               Try again
             </Button>
           </div>

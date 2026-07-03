@@ -252,6 +252,55 @@ export function submitMergePdfConversion(
   });
 }
 
+/**
+ * Submits file(s) plus arbitrary extra form fields to any `/api/v1/convert/{slug}`
+ * endpoint via XMLHttpRequest (not fetch) specifically because only XHR exposes
+ * upload progress events in the browser today. Generic counterpart to the
+ * per-tool `submit*Conversion` functions above — used by `ToolCard`, which
+ * drives every tool that doesn't need bespoke UI (like Merge PDF's reorder step).
+ */
+export function submitToolConversion(
+  slug: string,
+  files: File[],
+  fields: Record<string, string>,
+  multiple: boolean,
+  onUploadProgress: (percent: number) => void,
+): Promise<ConvertJobCreated> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}/api/v1/convert/${slug}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onUploadProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = async () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+        return;
+      }
+      const detail = await parseErrorDetail(xhr, 'Upload failed. Please try again.');
+      reject(new ApiError(detail, xhr.status));
+    };
+
+    xhr.onerror = () => {
+      reject(new ApiError('Could not reach the DosyaLab server. Check your connection.', 0));
+    };
+
+    const formData = new FormData();
+    const fileFieldName = multiple ? 'files' : 'file';
+    for (const file of files) {
+      formData.append(fileFieldName, file);
+    }
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, value);
+    }
+    xhr.send(formData);
+  });
+}
+
 export async function getConversionStatus(jobId: string): Promise<ConvertJobStatus> {
   const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}`);
   if (!response.ok) {
