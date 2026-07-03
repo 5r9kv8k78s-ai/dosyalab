@@ -16,6 +16,7 @@ from app.services.conversion import (
     submit_images_to_pdf_job,
     submit_merge_pdf_job,
     submit_pdf_to_docx_job,
+    submit_pdf_to_images_job,
     submit_pdf_to_xlsx_job,
     submit_protect_pdf_job,
     submit_reorder_pages_job,
@@ -376,6 +377,31 @@ async def convert_unlock_pdf(
 ) -> ConvertJobCreated:
     try:
         job = await submit_unlock_pdf_job(file, password, settings)
+    except PdfValidationError as exc:
+        logger.warning(
+            "convert.validation_failed",
+            extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    background_tasks.add_task(run_conversion_job, job.id, settings)
+    return ConvertJobCreated(job_id=job.id, status=job.status)
+
+
+@router.post(
+    "/pdf-to-images",
+    response_model=ConvertJobCreated,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def convert_pdf_to_images(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    image_format: str = Form("png"),
+    dpi: int = Form(150),
+    settings: Settings = Depends(get_settings),
+) -> ConvertJobCreated:
+    try:
+        job = await submit_pdf_to_images_job(file, image_format, dpi, settings)
     except PdfValidationError as exc:
         logger.warning(
             "convert.validation_failed",

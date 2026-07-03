@@ -16,6 +16,7 @@ from app.modules.converter import extract_pages as _extract_pages  # noqa: E402,
 from app.modules.converter import images_to_pdf as _images_to_pdf  # noqa: E402,F401
 from app.modules.converter import merge_pdf as _merge_pdf  # noqa: E402,F401
 from app.modules.converter import pdf_to_docx as _pdf_to_docx  # noqa: E402,F401
+from app.modules.converter import pdf_to_images as _pdf_to_images  # noqa: E402,F401
 from app.modules.converter import pdf_to_xlsx as _pdf_to_xlsx  # noqa: E402,F401
 from app.modules.converter import protect_pdf as _protect_pdf  # noqa: E402,F401
 from app.modules.converter import reorder_pages as _reorder_pages  # noqa: E402,F401
