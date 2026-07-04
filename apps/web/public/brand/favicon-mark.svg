@@ -1,7 +1,5 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dosyalab-favicon-title">
   <title id="dosyalab-favicon-title">DosyaLab</title>
-  <rect width="64" height="64" rx="16" fill="#4F46E5"/>
-  <path d="M36 14L44 22V50H20V14H36Z" fill="#FFFFFF"/>
-  <path d="M36 14L44 22H36V14Z" fill="#C7D2FE"/>
-  <circle cx="46" cy="46" r="8" fill="#06B6D4" stroke="#4F46E5" stroke-width="2"/>
+  <rect width="64" height="64" rx="16" fill="#0D5C54"/>
+  <path d="M13 43H26L38 21H51" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
