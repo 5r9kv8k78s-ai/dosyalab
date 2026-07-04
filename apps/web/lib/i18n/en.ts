@@ -246,6 +246,33 @@ export const en: Translations = {
     subtitle: 'Your file was prepared successfully.',
   },
 
+  feedback: {
+    buttonLabel: 'I have an idea',
+    title: 'I have an idea',
+    description:
+      "Help us build DosyaLab. Share an idea, a suggestion, or a problem you've run into.",
+    categoryLabel: 'Category',
+    categories: {
+      idea: 'Idea',
+      suggestion: 'Suggestion',
+      problem: 'Problem',
+      other: 'Other',
+    },
+    messageLabel: 'What do you think?',
+    messageCounter: (count: number, max: number) => `${count} / ${max}`,
+    emailLabel: 'Email',
+    emailHint: "If you'd like us to get back to you. Optional.",
+    submit: 'Send',
+    submitting: 'Sending…',
+    successTitle: 'Your idea made it to DosyaLab.',
+    successBody: 'Thank you.',
+    closeButton: 'Close',
+    errorGeneric: "Your feedback couldn't be sent. Please try again.",
+    errorRateLimited: "You've sent a lot of feedback recently. Please try again shortly.",
+    errorMessageTooShort: 'Your message needs to be a bit longer.',
+    closeAriaLabel: 'Close',
+  },
+
   pdfWorkspace: {
     back: 'Back',
     pageCountLabel: (count: number) => `${count} pages`,

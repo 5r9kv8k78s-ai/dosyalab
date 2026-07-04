@@ -250,6 +250,33 @@ export const tr = {
     subtitle: 'Dosyanız başarıyla hazırlandı.',
   },
 
+  feedback: {
+    buttonLabel: 'Bir fikrim var',
+    title: 'Bir fikrim var',
+    description:
+      "DosyaLab'ı birlikte geliştirelim. Fikrinizi, önerinizi veya yaşadığınız bir sorunu bizimle paylaşın.",
+    categoryLabel: 'Kategori',
+    categories: {
+      idea: 'Fikir',
+      suggestion: 'Öneri',
+      problem: 'Sorun',
+      other: 'Diğer',
+    },
+    messageLabel: 'Ne düşünüyorsunuz?',
+    messageCounter: (count: number, max: number) => `${count} / ${max}`,
+    emailLabel: 'E-posta',
+    emailHint: 'Size dönüş yapmamızı isterseniz. İsteğe bağlı.',
+    submit: 'Gönder',
+    submitting: 'Gönderiliyor…',
+    successTitle: "Fikriniz DosyaLab'a ulaştı.",
+    successBody: 'Teşekkür ederiz.',
+    closeButton: 'Kapat',
+    errorGeneric: 'Fikriniz gönderilemedi. Lütfen tekrar deneyin.',
+    errorRateLimited: 'Kısa sürede çok fazla fikir gönderdiniz. Lütfen biraz sonra tekrar deneyin.',
+    errorMessageTooShort: 'Mesajınız biraz daha uzun olmalı.',
+    closeAriaLabel: 'Kapat',
+  },
+
   pdfWorkspace: {
     back: 'Geri',
     pageCountLabel: (count: number) => `${count} sayfa`,

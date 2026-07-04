@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { SiteFooter } from '@/components/layout/SiteFooter';
-import { SiteHeader } from '@/components/layout/SiteHeader';
+import { SiteChrome } from '@/components/layout/SiteChrome';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { LanguageProvider } from '@/lib/i18n';
@@ -91,9 +90,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <LanguageProvider>
             <ToastProvider>
               <TooltipProvider>
-                <SiteHeader />
-                <div className="flex-1">{children}</div>
-                <SiteFooter />
+                <SiteChrome>{children}</SiteChrome>
               </TooltipProvider>
             </ToastProvider>
           </LanguageProvider>

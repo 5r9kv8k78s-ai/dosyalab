@@ -341,3 +341,36 @@ export async function downloadConversionResult(jobId: string, filename: string):
   const blob = await fetchConversionResultBlob(jobId);
   triggerBrowserDownload(blob, filename);
 }
+
+export interface FeedbackCreated {
+  feedback_id: string;
+  status: string;
+}
+
+/** Submits a "Bir fikrim var" entry. No file upload, no upload-progress
+ * need, so this uses plain `fetch` rather than the XHR pattern the
+ * conversion functions above use specifically for progress events. */
+export async function submitFeedback(input: {
+  category: string;
+  message: string;
+  email?: string;
+}): Promise<FeedbackCreated> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      detail = undefined;
+    }
+    throw new ApiError(detail ?? currentTranslations().errors.somethingWrong, response.status);
+  }
+
+  return response.json();
+}
