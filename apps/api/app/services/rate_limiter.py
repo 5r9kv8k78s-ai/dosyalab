@@ -153,3 +153,53 @@ async def enforce_conversion_rate_limit(
         detail="Too many requests. Please slow down and try again shortly.",
         headers={"Retry-After": str(result.retry_after_seconds)},
     )
+
+
+_feedback_limiter: FixedWindowRateLimiter | None = None
+_feedback_limiter_lock = threading.Lock()
+
+
+def _get_feedback_limiter(settings: Settings) -> FixedWindowRateLimiter:
+    # A separate limiter instance and budget from the conversion one above —
+    # a burst of feedback submissions must not exhaust a client's
+    # conversion quota, and vice versa (see FEEDBACK_RATE_LIMIT_* settings).
+    global _feedback_limiter
+    if _feedback_limiter is None:
+        with _feedback_limiter_lock:
+            if _feedback_limiter is None:
+                _feedback_limiter = FixedWindowRateLimiter(
+                    max_requests=settings.feedback_rate_limit_requests,
+                    window_seconds=settings.feedback_rate_limit_window_seconds,
+                )
+    return _feedback_limiter
+
+
+async def enforce_feedback_rate_limit(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> None:
+    """FastAPI dependency for `POST /api/v1/feedback` only — its own
+    limiter instance and budget, never shared with the conversion
+    limiter above."""
+    if not settings.feedback_rate_limit_enabled:
+        return
+
+    limiter = _get_feedback_limiter(settings)
+    result = limiter.check(_client_key(request))
+    if result.allowed:
+        return
+
+    record_operations_event(
+        event_type="rate_limit_rejection",
+        tool_slug="feedback",
+        status="validation_rejected",
+        file_count=0,
+        input_family="unknown",
+        duration_ms=None,
+        error_code="rate_limited",
+    )
+    logger.warning("rate_limit.rejected", extra={"tool_slug": "feedback"})
+    raise HTTPException(
+        status_code=429,
+        detail="Too many feedback submissions. Please try again shortly.",
+        headers={"Retry-After": str(result.retry_after_seconds)},
+    )
