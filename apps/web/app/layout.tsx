@@ -6,8 +6,13 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { LanguageProvider } from '@/lib/i18n';
 import { tr } from '@/lib/i18n/tr';
+import { SITE_URL } from '@/lib/seo/siteUrl';
 import { ThemeProvider } from '@/lib/theme';
 import './globals.css';
+
+const TITLE = "DosyaLab — Türkiye'nin Dosya Platformu";
+const DESCRIPTION =
+  'PDF, Word, Excel ve görsel dosyalarınızı tarayıcınızdan dönüştürün, birleştirin ve düzenleyin. Hızlı ve kullanışlı dosya araçları.';
 
 // Must match lib/theme/index.ts's THEME_STORAGE_KEY — duplicated here
 // because this script runs before hydration and can't import that module.
@@ -24,8 +29,28 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: tr.common.brandName,
-  description: tr.hero.subtitle,
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: TITLE,
+    template: '%s | DosyaLab',
+  },
+  description: DESCRIPTION,
+  applicationName: tr.common.brandName,
+  creator: tr.common.brandName,
+  publisher: tr.common.brandName,
+  category: 'technology',
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
+  // TR and EN are served from the same URL via client-side language state
+  // (see lib/i18n/LanguageProvider.tsx), not separate routes — there is no
+  // real /en variant to point hreflang at, so `languages` is intentionally
+  // left out here rather than declaring alternates that don't exist.
+  alternates: {
+    canonical: '/',
+  },
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -35,6 +60,19 @@ export const metadata: Metadata = {
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   manifest: '/site.webmanifest',
+  openGraph: {
+    type: 'website',
+    url: '/',
+    siteName: tr.common.brandName,
+    locale: 'tr_TR',
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export const viewport = {
