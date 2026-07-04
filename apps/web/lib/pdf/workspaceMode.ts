@@ -4,11 +4,12 @@ import type { ToolSlug } from '@/lib/tools';
  * drive. Adding a future tool (rotate, split, watermark-selected-pages)
  * means adding a mode here and a matching branch in PdfWorkspace.tsx —
  * nothing else in ConversionFlow needs to change. */
-export type PdfWorkspaceMode = 'delete' | 'extract';
+export type PdfWorkspaceMode = 'delete' | 'extract' | 'reorder';
 
 const TOOL_TO_WORKSPACE_MODE: Partial<Record<ToolSlug, PdfWorkspaceMode>> = {
   'delete-pages': 'delete',
   'extract-pages': 'extract',
+  'reorder-pages': 'reorder',
 };
 
 /** Single source of truth for "does this tool open the visual PDF

@@ -246,6 +246,12 @@ export const tr = {
       helper: 'Yeni bir PDF oluşturmak istediğiniz sayfaları seçin.',
       action: 'Seçili Sayfaları Çıkart',
     },
+    reorder: {
+      title: 'Sayfaları yeniden sıralayın',
+      helper: 'Sayfaları sürükleyerek istediğiniz sıraya taşıyın.',
+      action: 'Yeni Sıralamayı Uygula',
+      reset: 'Sıralamayı Sıfırla',
+    },
   },
 
   status: {

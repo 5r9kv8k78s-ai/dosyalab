@@ -1,24 +1,35 @@
 'use client';
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Check } from 'lucide-react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
+import { Check, GripVertical } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const THUMBNAIL_TARGET_WIDTH = 200;
 
+export interface PdfPageCardDragHandleProps {
+  attributes: DraggableAttributes;
+  listeners: DraggableSyntheticListeners;
+}
+
 export interface PdfPageCardProps {
-  /** The page's original, identity page number — used as the thumbnail's
-   * cache/render key. */
+  /** The page's original, identity page number — used only as the
+   * thumbnail's cache/render key so a reorder never re-renders it. */
   pageNumber: number;
-  /** 1-based position to *show* on the card. */
+  /** 1-based position to *show* on the card. In delete/extract mode this
+   * equals `pageNumber`; in reorder mode it's the current visual slot, per
+   * the spec's "keep original identity, display current visual position". */
   displayPosition: number;
   renderThumbnail: (pageNumber: number, targetWidth: number) => Promise<string>;
   /** Present only in selection modes (delete/extract) — its absence is what
-   * makes a card non-interactive/non-selectable. */
+   * makes a card non-interactive/non-selectable in reorder mode. */
   onSelectToggle?: () => void;
   selected?: boolean;
+  dragHandleProps?: PdfPageCardDragHandleProps;
   className?: string;
+  style?: React.CSSProperties;
+  setNodeRef?: (node: HTMLElement | null) => void;
 }
 
 export function PdfPageCard({
@@ -27,7 +38,10 @@ export function PdfPageCard({
   renderThumbnail,
   onSelectToggle,
   selected,
+  dragHandleProps,
   className,
+  style,
+  setNodeRef,
 }: PdfPageCardProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +91,11 @@ export function PdfPageCard({
 
   return (
     <div
-      ref={containerRef}
+      ref={(node) => {
+        containerRef.current = node;
+        setNodeRef?.(node);
+      }}
+      style={style}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-pressed={interactive ? !!selected : undefined}
@@ -104,6 +122,16 @@ export function PdfPageCard({
         {selected && (
           <span className="bg-primary text-primary-foreground absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full">
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        )}
+
+        {dragHandleProps && (
+          <span
+            {...dragHandleProps.attributes}
+            {...dragHandleProps.listeners}
+            className="bg-surface/90 text-muted absolute left-2 top-2 flex h-6 w-6 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
+          >
+            <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         )}
       </div>

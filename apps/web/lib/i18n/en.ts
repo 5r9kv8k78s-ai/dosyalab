@@ -244,6 +244,12 @@ export const en: Translations = {
       helper: 'Select the pages you want to build a new PDF from.',
       action: 'Extract Selected Pages',
     },
+    reorder: {
+      title: 'Reorder the pages',
+      helper: 'Drag the pages into the order you want.',
+      action: 'Apply New Order',
+      reset: 'Reset Order',
+    },
   },
 
   status: {

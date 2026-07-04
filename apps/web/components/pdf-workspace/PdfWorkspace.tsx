@@ -6,6 +6,9 @@ import { useTranslation } from '@/lib/i18n';
 import { loadPdfPreview, type PdfPreviewDocument } from '@/lib/pdf/pdfPreview';
 import {
   clearPageSelection,
+  identityOrder,
+  isIdentityOrder,
+  moveInOrder,
   selectAllPages,
   sortedSelection,
   toggleSelection,
@@ -19,14 +22,10 @@ import { PdfWorkspaceToolbar } from './PdfWorkspaceToolbar';
 
 type PreviewStatus = 'loading' | 'ready' | 'error';
 
-function identityOrder(pageCount: number): number[] {
-  return Array.from({ length: pageCount }, (_, index) => index + 1);
-}
-
 /**
  * Pre-conversion configuration stage for page-based PDF tools. Renders in
- * place of the tool-suggestion area once the user picks Delete/Extract
- * Pages (see `getPdfWorkspaceMode`); on confirm it hands the exact
+ * place of the tool-suggestion area once the user picks Delete/Extract/
+ * Reorder Pages (see `getPdfWorkspaceMode`); on confirm it hands the exact
  * form-field values the existing backend contract expects back up to
  * ConversionFlow, which starts the unchanged `useToolConversion` flow.
  */
@@ -47,6 +46,7 @@ export function PdfWorkspace({
   const [status, setStatus] = useState<PreviewStatus>('loading');
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(clearPageSelection());
+  const [pageOrder, setPageOrder] = useState<number[]>([]);
 
   // Load (and re-load on file change) + always release pdf.js resources.
   useEffect(() => {
@@ -54,6 +54,7 @@ export function PdfWorkspace({
     setStatus('loading');
     setPageCount(null);
     setSelectedPages(clearPageSelection());
+    setPageOrder([]);
 
     loadPdfPreview(file)
       .then((doc) => {
@@ -63,6 +64,7 @@ export function PdfWorkspace({
         }
         docRef.current = doc;
         setPageCount(doc.pageCount);
+        setPageOrder(identityOrder(doc.pageCount));
         setStatus('ready');
       })
       .catch(() => {
@@ -97,14 +99,30 @@ export function PdfWorkspace({
     setSelectedPages(clearPageSelection());
   }, []);
 
+  const handleReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setPageOrder((prev) => moveInOrder(prev, fromIndex, toIndex));
+  }, []);
+
+  const handleResetOrder = useCallback(() => {
+    if (pageCount) setPageOrder(identityOrder(pageCount));
+  }, [pageCount]);
+
   const handleConfirm = useCallback(() => {
-    onConfirm({ pages: sortedSelection(selectedPages).join(',') });
-  }, [onConfirm, selectedPages]);
+    if (mode === 'reorder') {
+      onConfirm({ order: pageOrder.join(',') });
+    } else {
+      onConfirm({ pages: sortedSelection(selectedPages).join(',') });
+    }
+  }, [mode, onConfirm, pageOrder, selectedPages]);
 
   const copy = t.pdfWorkspace[mode];
   const allSelected = pageCount !== null && selectedPages.size >= pageCount;
   const canConfirm =
-    mode === 'delete' ? selectedPages.size > 0 && !allSelected : selectedPages.size > 0;
+    mode === 'reorder'
+      ? pageCount !== null && pageCount > 1 && !isIdentityOrder(pageOrder)
+      : mode === 'delete'
+        ? selectedPages.size > 0 && !allSelected
+        : selectedPages.size > 0;
 
   return (
     <div className="border-border bg-surface shadow-premium rounded-2xl border p-6">
@@ -131,18 +149,33 @@ export function PdfWorkspace({
         {status === 'ready' && pageCount !== null && (
           <>
             <div className="mb-4">
-              <PdfWorkspaceToolbar
-                selectedCount={selectedPages.size}
-                onSelectAll={handleSelectAll}
-                onClearSelection={handleClearSelection}
-              />
+              {mode === 'reorder' ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleResetOrder}
+                    disabled={isIdentityOrder(pageOrder)}
+                    className="focus-ring text-small text-muted hover:text-foreground duration-base rounded font-medium transition-colors disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    {t.pdfWorkspace.reorder.reset}
+                  </button>
+                </div>
+              ) : (
+                <PdfWorkspaceToolbar
+                  selectedCount={selectedPages.size}
+                  onSelectAll={handleSelectAll}
+                  onClearSelection={handleClearSelection}
+                />
+              )}
             </div>
 
             <PdfPageGrid
-              pageOrder={identityOrder(pageCount)}
+              mode={mode === 'reorder' ? 'reorder' : 'select'}
+              pageOrder={pageOrder}
               selectedPages={selectedPages}
               renderThumbnail={renderThumbnail}
               onToggleSelect={handleToggleSelect}
+              onReorder={handleReorder}
             />
 
             {mode === 'delete' && allSelected && (
