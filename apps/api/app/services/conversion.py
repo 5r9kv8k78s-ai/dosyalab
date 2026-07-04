@@ -61,6 +61,24 @@ _PROGRESS_TICK_INTERVAL_SECONDS = 0.4
 _PROGRESS_TICK_CAP = 90
 
 
+# Passed as `StorageService.save`'s `on_chunk` callback so an oversized
+# upload is rejected as soon as it crosses the limit mid-stream, instead of
+# only after the entire file has already been written to disk (see
+# storage.py). Each still raises the same typed validation error the
+# existing post-save `validate_*_size` call already did, so no except
+# clause needed to change.
+def _pdf_size_checker(settings: Settings):
+    return lambda total: validate_pdf_size(total, settings.max_convert_upload_size_mb)
+
+
+def _docx_size_checker(settings: Settings):
+    return lambda total: validate_docx_size(total, settings.max_convert_upload_size_mb)
+
+
+def _image_size_checker(settings: Settings):
+    return lambda total: validate_image_size(total, settings.max_convert_upload_size_mb)
+
+
 async def submit_pdf_to_docx_job(file: UploadFile, settings: Settings) -> ConversionJob:
     """Validate an uploaded PDF and create a conversion job for it.
 
@@ -71,7 +89,9 @@ async def submit_pdf_to_docx_job(file: UploadFile, settings: Settings) -> Conver
     validate_pdf_extension(original_filename)
 
     storage = StorageService(upload_dir=settings.convert_upload_dir)
-    _file_id, source_path, size_bytes = await storage.save(file)
+    _file_id, source_path, size_bytes = await storage.save(
+        file, on_chunk=_pdf_size_checker(settings)
+    )
 
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
@@ -108,7 +128,9 @@ async def submit_docx_to_pdf_job(file: UploadFile, settings: Settings) -> Conver
     validate_docx_extension(original_filename)
 
     storage = StorageService(upload_dir=settings.convert_upload_dir)
-    _file_id, source_path, size_bytes = await storage.save(file)
+    _file_id, source_path, size_bytes = await storage.save(
+        file, on_chunk=_docx_size_checker(settings)
+    )
 
     try:
         validate_docx_size(size_bytes, settings.max_convert_upload_size_mb)
@@ -146,7 +168,9 @@ async def submit_pdf_to_xlsx_job(file: UploadFile, settings: Settings) -> Conver
     validate_pdf_extension(original_filename)
 
     storage = StorageService(upload_dir=settings.convert_upload_dir)
-    _file_id, source_path, size_bytes = await storage.save(file)
+    _file_id, source_path, size_bytes = await storage.save(
+        file, on_chunk=_pdf_size_checker(settings)
+    )
 
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
@@ -185,6 +209,10 @@ async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) 
     """
     if not files:
         raise ImageValidationError("At least one image is required.")
+    if len(files) > settings.max_batch_file_count:
+        raise ImageValidationError(
+            f"Too many files in one request (max {settings.max_batch_file_count})."
+        )
 
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
@@ -195,7 +223,9 @@ async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) 
             original_filename = secure_filename(file.filename)
             validate_image_extension(original_filename)
 
-            _file_id, saved_path, size_bytes = await storage.save(file)
+            _file_id, saved_path, size_bytes = await storage.save(
+                file, on_chunk=_image_size_checker(settings)
+            )
             validate_image_size(size_bytes, settings.max_convert_upload_size_mb)
             inspect_image(saved_path)
 
@@ -238,6 +268,10 @@ async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> C
     """
     if len(files) < 2:
         raise PdfValidationError("At least two PDF files are required to merge.")
+    if len(files) > settings.max_batch_file_count:
+        raise PdfValidationError(
+            f"Too many files in one request (max {settings.max_batch_file_count})."
+        )
 
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
@@ -248,7 +282,9 @@ async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> C
             original_filename = secure_filename(file.filename)
             validate_pdf_extension(original_filename)
 
-            _file_id, saved_path, size_bytes = await storage.save(file)
+            _file_id, saved_path, size_bytes = await storage.save(
+                file, on_chunk=_pdf_size_checker(settings)
+            )
             validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
             inspect_pdf(saved_path)
 
@@ -296,7 +332,13 @@ async def submit_split_pdf_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         inspect_pdf(saved_path)
@@ -336,7 +378,9 @@ async def submit_compress_pdf_job(file: UploadFile, settings: Settings) -> Conve
     validate_pdf_extension(original_filename)
 
     storage = StorageService(upload_dir=settings.convert_upload_dir)
-    _file_id, source_path, size_bytes = await storage.save(file)
+    _file_id, source_path, size_bytes = await storage.save(
+        file, on_chunk=_pdf_size_checker(settings)
+    )
 
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
@@ -383,7 +427,13 @@ async def submit_rotate_pdf_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         page_count = inspect_pdf(saved_path)
@@ -431,7 +481,13 @@ async def submit_delete_pages_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         page_count = inspect_pdf(saved_path)
@@ -480,7 +536,13 @@ async def submit_extract_pages_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         page_count = inspect_pdf(saved_path)
@@ -528,7 +590,13 @@ async def submit_reorder_pages_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         page_count = inspect_pdf(saved_path)
@@ -582,7 +650,13 @@ async def submit_watermark_pdf_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         inspect_pdf(saved_path)
@@ -630,7 +704,13 @@ async def submit_protect_pdf_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         inspect_pdf(saved_path)
@@ -680,7 +760,13 @@ async def submit_unlock_pdf_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         inspect_pdf_allow_encrypted(saved_path)
@@ -724,7 +810,13 @@ async def submit_pdf_to_images_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         inspect_pdf(saved_path)
@@ -766,7 +858,9 @@ async def submit_extract_images_job(file: UploadFile, settings: Settings) -> Con
     validate_pdf_extension(original_filename)
 
     storage = StorageService(upload_dir=settings.convert_upload_dir)
-    _file_id, source_path, size_bytes = await storage.save(file)
+    _file_id, source_path, size_bytes = await storage.save(
+        file, on_chunk=_pdf_size_checker(settings)
+    )
 
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
@@ -806,7 +900,13 @@ async def submit_extract_text_job(
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
     storage = StorageService(upload_dir=job_upload_dir)
 
-    _file_id, saved_path, size_bytes = await storage.save(file)
+    try:
+        _file_id, saved_path, size_bytes = await storage.save(
+            file, on_chunk=_pdf_size_checker(settings)
+        )
+    except PdfValidationError:
+        shutil.rmtree(job_upload_dir, ignore_errors=True)
+        raise
     try:
         validate_pdf_size(size_bytes, settings.max_convert_upload_size_mb)
         page_count = inspect_pdf(saved_path)

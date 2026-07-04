@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     convert_output_dir: Path = Path("storage/convert/outputs")
     max_convert_upload_size_mb: int = 100
 
+    # A 100MB-per-file limit still permits an abusive batch total on
+    # multi-file endpoints (merge-pdf, images-to-pdf) — e.g. 200 files at
+    # just under the per-file cap. This bounds the file *count* per request;
+    # it does not replace `max_convert_upload_size_mb`, which still applies
+    # to each individual file in the batch.
+    max_batch_file_count: int = 30
+
     # How long a completed/failed job's files are kept before the periodic
     # sweep deletes them, for clients that never call the download endpoint.
     job_ttl_minutes: int = 60
