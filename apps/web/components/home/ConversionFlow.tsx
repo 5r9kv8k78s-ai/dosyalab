@@ -196,7 +196,7 @@ export function ConversionFlow() {
   const isBusy = !isIdle && state.stage !== 'error' && state.stage !== 'completed';
 
   return (
-    <section id="tools" className="mx-auto max-w-[1200px] px-6 pb-16">
+    <section id="tools" className="mx-auto w-full max-w-[1200px] px-5 pb-16 sm:px-6">
       {isIdle && (
         <div className="mx-auto max-w-xl">
           <UploadZone
@@ -216,24 +216,35 @@ export function ConversionFlow() {
       )}
 
       {isIdle && category && (
-        <div className="animate-fade-in-up mx-auto mt-8 max-w-2xl">
-          <div className="border-border bg-surface flex items-center justify-between rounded-2xl border p-4">
-            <div className="flex items-center gap-3">
-              <FileTypeIcon type={category} size={32} />
-              <div className="min-w-0">
+        <div className="animate-fade-in-up mx-auto mt-8 w-full max-w-2xl">
+          <div className="border-border bg-surface min-w-0 rounded-2xl border p-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <FileTypeIcon type={category} size={32} className="shrink-0" />
+              <div className="min-w-0 flex-1">
                 <p className="text-small text-foreground truncate font-medium">
                   {rawFiles[0]?.name}
                 </p>
-                <p className="text-muted text-xs">{t.categories[category]}</p>
+                <p className="text-muted hidden text-xs sm:block">{t.categories[category]}</p>
               </div>
+              <button
+                type="button"
+                className="focus-ring text-small text-muted hover:text-foreground hidden shrink-0 rounded font-medium sm:block"
+                onClick={handleReset}
+              >
+                {t.upload.pickDifferentFile}
+              </button>
             </div>
-            <button
-              type="button"
-              className="focus-ring text-small text-muted hover:text-foreground shrink-0 rounded font-medium"
-              onClick={handleReset}
-            >
-              {t.upload.pickDifferentFile}
-            </button>
+
+            <div className="mt-2 flex items-center justify-between gap-3 sm:hidden">
+              <p className="text-muted truncate text-xs">{t.categories[category]}</p>
+              <button
+                type="button"
+                className="focus-ring text-small text-muted hover:text-foreground shrink-0 rounded font-medium"
+                onClick={handleReset}
+              >
+                {t.upload.pickDifferentFile}
+              </button>
+            </div>
           </div>
 
           {categoryTools.length === 0 ? (
@@ -249,7 +260,7 @@ export function ConversionFlow() {
             </div>
           ) : (
             <>
-              <h2 className="text-h3 text-foreground mt-8 text-center">
+              <h2 className="text-foreground sm:text-h3 mt-8 text-center text-[30px] font-semibold leading-[1.1]">
                 {t.upload.chooseActionHeading}
               </h2>
               <div className="mt-4">

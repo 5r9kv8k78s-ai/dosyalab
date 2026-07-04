@@ -11,7 +11,7 @@ export function SiteHeader() {
 
   return (
     <header className="z-sticky border-border bg-surface/80 sticky top-0 border-b backdrop-blur">
-      <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-6">
+      <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-4 sm:px-6">
         <Link href="/" className="focus-ring flex min-h-[44px] items-center rounded-md">
           <DosyaLabLogo
             showWordmark

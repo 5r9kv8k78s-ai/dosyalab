@@ -41,8 +41,8 @@ export function UploadZone({
       onFiles={onFiles}
       aria-label={ariaLabel}
       className={cn(
-        'from-surface to-primary/5 hover:border-primary rounded-upload hover:shadow-premium border-2 border-dashed bg-gradient-to-br transition-all duration-200 hover:scale-[1.01]',
-        compact ? 'min-h-[160px]' : 'min-h-[320px]',
+        'from-surface to-primary/5 hover:border-primary rounded-upload hover:shadow-premium w-full max-w-full border-2 border-dashed bg-gradient-to-br px-5 py-7 transition-all duration-200 hover:scale-[1.01] sm:px-4 sm:py-8',
+        compact ? 'min-h-[160px]' : 'min-h-[230px] sm:min-h-[320px]',
       )}
     >
       <UploadCloud

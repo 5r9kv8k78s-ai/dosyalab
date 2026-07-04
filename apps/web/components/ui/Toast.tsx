@@ -86,7 +86,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </ToastPrimitive.Root>
           );
         })}
-        <ToastPrimitive.Viewport className="z-toast fixed bottom-0 right-0 flex w-full max-w-sm flex-col gap-2 p-4 outline-none" />
+        <ToastPrimitive.Viewport className="z-toast fixed bottom-0 right-0 flex w-full max-w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 p-4 outline-none" />
       </ToastPrimitive.Provider>
     </ToastContext.Provider>
   );

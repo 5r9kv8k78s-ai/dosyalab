@@ -27,9 +27,9 @@ export function PdfWorkspaceHeader({
         {t.pdfWorkspace.back}
       </button>
 
-      <div className="text-right">
+      <div className="min-w-0 text-right">
         <p className="text-cardTitle text-foreground truncate font-semibold">{operationTitle}</p>
-        <p className="text-small text-muted">
+        <p className="text-small text-muted truncate">
           {fileName}
           {pageCount !== null ? ` · ${t.pdfWorkspace.pageCountLabel(pageCount)}` : ''}
         </p>
