@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useTranslation } from '@/lib/i18n';
 import { STAGE_SEQUENCE, type ConversionStage } from '@/lib/hooks/useToolConversion';
 import { cn } from '@/lib/utils';
@@ -49,10 +48,9 @@ export function ProgressFlow({
         {Math.round(barWidth)}%
       </p>
       <div className="bg-border h-3 w-full overflow-hidden rounded-full">
-        <motion.div
-          className="bg-primary h-full rounded-full"
-          animate={{ width: `${barWidth}%` }}
-          transition={{ duration: 0.4, ease: 'easeOut' }}
+        <div
+          className="bg-primary duration-slow h-full rounded-full transition-[width] ease-out"
+          style={{ width: `${barWidth}%` }}
         />
       </div>
 

@@ -196,3 +196,31 @@ export const TOOLS: ToolConfig[] = [
 export function toolsByFileType(fileType: FileType): ToolConfig[] {
   return TOOLS.filter((tool) => tool.fileType === fileType);
 }
+
+const EXTENSION_TO_FILE_TYPE: Record<string, FileType> = {
+  pdf: 'pdf',
+  doc: 'word',
+  docx: 'word',
+  xls: 'excel',
+  xlsx: 'excel',
+  jpg: 'image',
+  jpeg: 'image',
+  png: 'image',
+  webp: 'image',
+};
+
+/** Every extension the upload-first homepage flow accepts before a tool is
+ * chosen — used both for the initial dropzone's `accept` attribute and to
+ * infer a {@link FileType} from whatever file the user drops first. */
+export const GENERIC_UPLOAD_ACCEPT = Object.keys(EXTENSION_TO_FILE_TYPE)
+  .map((ext) => `.${ext}`)
+  .join(',');
+
+/** Best-effort guess at a dropped file's {@link FileType} from its
+ * extension, so the homepage can surface the right tool cards without the
+ * user picking a category first. Returns `null` for anything unrecognized. */
+export function inferFileType(fileName: string): FileType | null {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  if (!ext) return null;
+  return EXTENSION_TO_FILE_TYPE[ext] ?? null;
+}

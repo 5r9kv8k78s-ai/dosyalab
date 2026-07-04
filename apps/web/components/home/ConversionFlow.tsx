@@ -1,22 +1,29 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import type { FileType } from '@/components/icons/FileTypeIcon';
+import { FileTypeIcon, type FileType } from '@/components/icons/FileTypeIcon';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/lib/i18n';
 import { useToolConversion } from '@/lib/hooks/useToolConversion';
-import { toolsByFileType, type ToolConfig } from '@/lib/tools';
-import { CategorySelector } from './CategorySelector';
+import {
+  GENERIC_UPLOAD_ACCEPT,
+  inferFileType,
+  toolsByFileType,
+  type ToolConfig,
+} from '@/lib/tools';
 import { ParameterCard } from './ParameterCard';
 import { ProgressFlow } from './ProgressFlow';
 import { SelectedFilesList } from './SelectedFilesList';
 import { SuccessScreen } from './SuccessScreen';
-import { ToolChips } from './ToolChips';
+import { ToolCards } from './ToolCards';
 import { UploadZone } from './UploadZone';
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+// `useToolConversion` always needs a ToolConfig — this stands in only while
+// no tool is selected yet (before a file is dropped, `start()` is never
+// reachable from the UI, so its slug/multiple are never actually used).
+const FALLBACK_TOOL = toolsByFileType('pdf')[0];
 
 function extensionsFromAccept(accept: string): string[] {
   return accept
@@ -37,70 +44,98 @@ function moveItem<T>(items: T[], index: number, direction: -1 | 1): T[] {
   return next;
 }
 
+/** Narrows a raw dropped batch down to what a given tool can actually use —
+ * matching extensions only, and a single file unless the tool allows more. */
+function filesForTool(candidates: File[], tool: ToolConfig): File[] {
+  const allowedExtensions = extensionsFromAccept(tool.accept);
+  const matching = candidates.filter((file) =>
+    allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
+  );
+  return tool.multiple ? matching : matching.slice(0, 1);
+}
+
 export function ConversionFlow() {
   const { t } = useTranslation();
 
-  const [category, setCategory] = useState<FileType>('pdf');
-  const [selectedTool, setSelectedTool] = useState<ToolConfig>(() => toolsByFileType('pdf')[0]);
+  const [category, setCategory] = useState<FileType | null>(null);
+  const [selectedTool, setSelectedTool] = useState<ToolConfig | null>(null);
+  const [rawFiles, setRawFiles] = useState<File[]>([]);
   const [files, setFiles] = useState<File[]>([]);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() =>
-    initialFieldValues(selectedTool),
-  );
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [pickError, setPickError] = useState<string | null>(null);
 
-  const { state, start, reset, redownload } = useToolConversion(selectedTool);
+  const { state, start, reset, redownload } = useToolConversion(selectedTool ?? FALLBACK_TOOL);
 
-  const applyTool = useCallback((tool: ToolConfig) => {
-    setSelectedTool(tool);
-    setFiles([]);
-    setFieldValues(initialFieldValues(tool));
-    setPickError(null);
-  }, []);
-
-  const handleCategorySelect = useCallback(
-    (nextCategory: FileType) => {
-      setCategory(nextCategory);
-      reset();
-      const tools = toolsByFileType(nextCategory);
-      if (tools.length > 0) applyTool(tools[0]);
+  const validateAgainst = useCallback(
+    (candidates: File[], tool: ToolConfig): string | null => {
+      const allowedExtensions = extensionsFromAccept(tool.accept);
+      const invalidFile = candidates.find(
+        (file) => !allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
+      );
+      if (invalidFile) {
+        return t.errors.unsupportedFileTypeFor(invalidFile.name, t.tools[tool.slug].title);
+      }
+      const oversizedFile = candidates.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+      if (oversizedFile) return t.errors.fileTooLargeDetail(oversizedFile.name);
+      return null;
     },
-    [applyTool, reset],
+    [t.errors, t.tools],
   );
 
   const handleToolSelect = useCallback(
     (tool: ToolConfig) => {
+      setSelectedTool(tool);
+      setFieldValues(initialFieldValues(tool));
+      setFiles(filesForTool(rawFiles, tool));
+      setPickError(null);
       reset();
-      applyTool(tool);
     },
-    [applyTool, reset],
+    [rawFiles, reset],
   );
 
-  const handleFiles = useCallback(
+  const handleInitialFiles = useCallback(
     (fileList: FileList | null) => {
       if (!fileList || fileList.length === 0) return;
-      let picked = Array.from(fileList);
-      if (!selectedTool.multiple) picked = picked.slice(0, 1);
-
-      const allowedExtensions = extensionsFromAccept(selectedTool.accept);
-      const invalidFile = picked.find(
-        (file) => !allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
-      );
-      if (invalidFile) {
-        setPickError(
-          t.errors.unsupportedFileTypeFor(invalidFile.name, t.tools[selectedTool.slug].title),
-        );
+      const picked = Array.from(fileList);
+      const detected = inferFileType(picked[0].name);
+      if (!detected) {
+        setPickError(t.errors.invalidFileType);
         return;
       }
-      const oversizedFile = picked.find((file) => file.size > MAX_FILE_SIZE_BYTES);
-      if (oversizedFile) {
-        setPickError(t.errors.fileTooLargeDetail(oversizedFile.name));
-        return;
+
+      const tool = toolsByFileType(detected)[0] as ToolConfig | undefined;
+      if (tool) {
+        const error = validateAgainst(picked, tool);
+        if (error) {
+          setPickError(error);
+          return;
+        }
       }
 
       setPickError(null);
-      setFiles((prev) => (selectedTool.multiple ? [...prev, ...picked] : picked));
+      setCategory(detected);
+      setRawFiles(picked);
+      setSelectedTool(tool ?? null);
+      setFieldValues(tool ? initialFieldValues(tool) : {});
+      setFiles(tool ? filesForTool(picked, tool) : []);
     },
-    [selectedTool, t.errors, t.tools],
+    [t.errors, validateAgainst],
+  );
+
+  const handleAddMoreFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList || !selectedTool) return;
+      const picked = Array.from(fileList);
+      const error = validateAgainst(picked, selectedTool);
+      if (error) {
+        setPickError(error);
+        return;
+      }
+      setPickError(null);
+      setRawFiles((prev) => [...prev, ...picked]);
+      setFiles((prev) => [...prev, ...picked]);
+    },
+    [selectedTool, validateAgainst],
   );
 
   const removeFile = useCallback((index: number) => {
@@ -119,132 +154,149 @@ export function ConversionFlow() {
     start(files, fieldValues);
   }, [fieldValues, files, start]);
 
+  const handleReset = useCallback(() => {
+    setCategory(null);
+    setSelectedTool(null);
+    setRawFiles([]);
+    setFiles([]);
+    setFieldValues({});
+    setPickError(null);
+    reset();
+  }, [reset]);
+
   const handleTryAgain = useCallback(() => {
     setFiles([]);
     setPickError(null);
     reset();
   }, [reset]);
 
-  const missingRequiredField = selectedTool.fields.some(
-    (field) => field.required && !fieldValues[field.name]?.trim(),
-  );
-  const minFiles = selectedTool.multiple ? (selectedTool.minFiles ?? 1) : 1;
-  const canStart = files.length >= minFiles && !missingRequiredField;
-
-  const isBusy = state.stage !== 'idle' && state.stage !== 'error' && state.stage !== 'completed';
-  const categoryHasTools = toolsByFileType(category).length > 0;
-  const showUploadArea = state.stage === 'idle' && categoryHasTools;
+  const categoryTools = category ? toolsByFileType(category) : [];
+  const missingRequiredField =
+    selectedTool?.fields.some((field) => field.required && !fieldValues[field.name]?.trim()) ??
+    false;
+  const minFiles = selectedTool ? (selectedTool.multiple ? (selectedTool.minFiles ?? 1) : 1) : 1;
+  const canStart = !!selectedTool && files.length >= minFiles && !missingRequiredField;
+  const needsMoreFiles = !!selectedTool?.multiple && files.length < minFiles;
+  const isIdle = state.stage === 'idle';
+  const isBusy = !isIdle && state.stage !== 'error' && state.stage !== 'completed';
 
   return (
-    <section id="tools" className="mx-auto max-w-[1200px] px-6 pb-8 pt-2">
-      <CategorySelector activeCategory={category} onSelect={handleCategorySelect} />
+    <section id="tools" className="mx-auto max-w-[1200px] px-6 pb-16">
+      {isIdle && (
+        <div className="mx-auto max-w-xl">
+          <UploadZone
+            accept={GENERIC_UPLOAD_ACCEPT}
+            multiple
+            ariaLabel={t.upload.genericDropZoneAriaLabel}
+            subtitleLine={t.upload.genericSupportedTypesLine}
+            onFiles={handleInitialFiles}
+          />
 
-      <div className="mt-4">
-        <ToolChips
-          category={category}
-          selectedSlug={selectedTool.slug}
-          onSelect={handleToolSelect}
-        />
-      </div>
-
-      <div className="mx-auto mt-5 max-w-xl">
-        <AnimatePresence mode="wait">
-          {!categoryHasTools && state.stage === 'idle' && (
-            <motion.div
-              key="select-tool-first"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="border-border text-muted flex min-h-[220px] items-center justify-center rounded-[28px] border-2 border-dashed"
-            >
-              <p className="text-small font-medium">{t.upload.selectToolFirst}</p>
-            </motion.div>
+          {pickError && (
+            <Alert variant="danger" className="mt-4">
+              {pickError}
+            </Alert>
           )}
+        </div>
+      )}
 
-          {showUploadArea && (
-            <motion.div
-              key="upload"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+      {isIdle && category && (
+        <div className="animate-fade-in-up mx-auto mt-8 max-w-2xl">
+          <div className="border-border bg-surface flex items-center justify-between rounded-2xl border p-4">
+            <div className="flex items-center gap-3">
+              <FileTypeIcon type={category} size={32} />
+              <div className="min-w-0">
+                <p className="text-small text-foreground truncate font-medium">
+                  {rawFiles[0]?.name}
+                </p>
+                <p className="text-muted text-xs">{t.categories[category]}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="focus-ring text-small text-muted hover:text-foreground shrink-0 rounded font-medium"
+              onClick={handleReset}
             >
-              <UploadZone tool={selectedTool} onFiles={handleFiles} />
+              {t.upload.pickDifferentFile}
+            </button>
+          </div>
 
-              {pickError && (
-                <Alert variant="danger" className="mt-4">
-                  {pickError}
-                </Alert>
-              )}
+          {categoryTools.length === 0 ? (
+            <p className="text-small text-muted mt-6 text-center">{t.categories.emptyState}</p>
+          ) : (
+            <>
+              <h2 className="text-h3 text-foreground mt-8 text-center">
+                {t.upload.chooseActionHeading}
+              </h2>
+              <div className="mt-4">
+                <ToolCards
+                  tools={categoryTools}
+                  selectedSlug={selectedTool?.slug ?? null}
+                  onSelect={handleToolSelect}
+                />
+              </div>
 
-              <SelectedFilesList
-                files={files}
-                reorderable={selectedTool.multiple && files.length > 1}
-                onRemove={removeFile}
-                onMove={moveFile}
-              />
+              {selectedTool && (
+                <div className="mx-auto mt-6 max-w-xl">
+                  <SelectedFilesList
+                    files={files}
+                    reorderable={selectedTool.multiple && files.length > 1}
+                    onRemove={removeFile}
+                    onMove={moveFile}
+                  />
 
-              <ParameterCard tool={selectedTool} values={fieldValues} onChange={updateField} />
+                  {needsMoreFiles && (
+                    <div className="mt-4">
+                      <UploadZone
+                        accept={selectedTool.accept}
+                        multiple
+                        compact
+                        ariaLabel={t.upload.mergeDropZoneAriaLabel}
+                        subtitleLine={t.upload.mergeHint}
+                        onFiles={handleAddMoreFiles}
+                      />
+                    </div>
+                  )}
 
-              {files.length > 0 && (
-                <div className="mt-4 flex justify-center">
-                  <Button size="lg" disabled={!canStart} onClick={handleStart}>
-                    {t.buttons.start}
-                  </Button>
+                  <ParameterCard tool={selectedTool} values={fieldValues} onChange={updateField} />
+
+                  <div className="mt-4 flex justify-center">
+                    <Button size="lg" disabled={!canStart} onClick={handleStart}>
+                      {t.buttons.start}
+                    </Button>
+                  </div>
                 </div>
               )}
-            </motion.div>
+            </>
           )}
+        </div>
+      )}
 
-          {isBusy && (
-            <motion.div
-              key="progress"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="border-border bg-surface rounded-[28px] border px-8 py-12"
-            >
-              <ProgressFlow stage={state.stage} uploadProgress={state.uploadProgress} />
-            </motion.div>
-          )}
+      {isBusy && (
+        <div className="border-border bg-surface animate-fade-in-up rounded-upload mx-auto mt-8 max-w-xl border px-8 py-12">
+          <ProgressFlow stage={state.stage} uploadProgress={state.uploadProgress} />
+        </div>
+      )}
 
-          {state.stage === 'completed' && (
-            <motion.div
-              key="success"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="border-border bg-surface rounded-[28px] border px-8"
-            >
-              <SuccessScreen
-                filename={state.resultFilename}
-                fileSize={state.resultFileSize}
-                onDownloadAgain={redownload}
-                onNewConversion={handleTryAgain}
-              />
-            </motion.div>
-          )}
+      {state.stage === 'completed' && (
+        <div className="border-border bg-surface animate-fade-in-up rounded-upload mx-auto mt-8 max-w-xl border px-8">
+          <SuccessScreen
+            filename={state.resultFilename}
+            fileSize={state.resultFileSize}
+            onDownloadAgain={redownload}
+            onNewConversion={handleReset}
+          />
+        </div>
+      )}
 
-          {state.stage === 'error' && (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="border-border bg-surface space-y-4 rounded-[28px] border px-8 py-12 text-center"
-            >
-              <Alert variant="danger">{state.errorMessage}</Alert>
-              <Button variant="outline" onClick={handleTryAgain}>
-                {t.buttons.tryAgain}
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {state.stage === 'error' && (
+        <div className="border-border bg-surface animate-fade-in-up rounded-upload mx-auto mt-8 max-w-xl space-y-4 border px-8 py-12 text-center">
+          <Alert variant="danger">{state.errorMessage}</Alert>
+          <Button variant="outline" onClick={handleTryAgain}>
+            {t.buttons.tryAgain}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

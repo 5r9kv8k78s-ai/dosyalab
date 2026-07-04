@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useTranslation } from '@/lib/i18n';
 
 const BADGES = [
@@ -13,31 +12,14 @@ export function Hero() {
   const { t } = useTranslation();
 
   return (
-    <section className="mx-auto max-w-2xl px-6 pb-6 pt-10 text-center sm:pt-14">
-      <motion.h1
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="text-h1 sm:text-hero text-foreground"
-      >
-        {t.hero.title}
-      </motion.h1>
+    <section className="mx-auto max-w-3xl px-6 pb-2 pt-4 text-center sm:pt-5">
+      <h1 className="animate-fade-in-up text-h1 sm:text-display text-foreground">{t.hero.title}</h1>
 
-      <motion.p
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.08, ease: 'easeOut' }}
-        className="text-body sm:text-heroSubtitle text-muted mx-auto mt-2 max-w-xl"
-      >
+      <p className="animate-fade-in-up text-body text-muted mx-auto mt-2 max-w-xl [animation-delay:80ms]">
         {t.hero.subtitle}
-      </motion.p>
+      </p>
 
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.16, ease: 'easeOut' }}
-        className="mt-4 flex flex-wrap items-center justify-center gap-3"
-      >
+      <div className="animate-fade-in-up mt-3 flex flex-wrap items-center justify-center gap-3 [animation-delay:160ms]">
         {BADGES.map((badge) => (
           <span
             key={badge.key}
@@ -47,7 +29,7 @@ export function Hero() {
             {t.hero[badge.key]}
           </span>
         ))}
-      </motion.div>
+      </div>
     </section>
   );
 }

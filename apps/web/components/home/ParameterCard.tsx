@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Input } from '@/components/ui/Input';
 import { useTranslation } from '@/lib/i18n';
 import { toolFieldKey, type ToolConfig } from '@/lib/tools';
@@ -19,12 +18,7 @@ export function ParameterCard({
   if (tool.fields.length === 0) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
-      className="border-border bg-surface mt-4 space-y-4 rounded-2xl border p-6 shadow-sm"
-    >
+    <div className="border-border bg-surface animate-fade-in-up mt-4 space-y-4 rounded-2xl border p-6 shadow-sm">
       {tool.fields.map((field) => {
         const fieldText = t.toolFields[toolFieldKey(tool.slug, field.name)];
         return (
@@ -39,6 +33,6 @@ export function ParameterCard({
           />
         );
       })}
-    </motion.div>
+    </div>
   );
 }

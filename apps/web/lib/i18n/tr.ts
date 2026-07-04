@@ -11,9 +11,9 @@ export const tr = {
   },
 
   hero: {
-    title: 'Belgelerinizi saniyeler içinde dönüştürün.',
+    title: 'Dosyanızı bırakın. Gerisini DosyaLab halletsin.',
     subtitle:
-      'PDF, Word, Excel ve görsellerinizi güvenli, hızlı ve tamamen tarayıcınız üzerinden dönüştürün.',
+      'PDF, Word, Excel veya görsellerinizi yükleyin. DosyaLab dosyanızı otomatik analiz eder ve size en uygun işlemleri önerir.',
     privacyNote: 'Dosyalarınız işlem tamamlandıktan sonra otomatik silinir.',
     badgeFast: 'Çok Hızlı',
     badgeSecure: 'Güvenli',
@@ -165,6 +165,10 @@ export const tr = {
     mergeHint: 'İki veya daha fazla PDF — her biri en fazla 100MB',
     selectedCount: (count: number) => `${count} PDF seçildi — gerekirse sırasını değiştirin`,
     selectToolFirst: 'Önce bir araç seçin',
+    genericDropZoneAriaLabel: 'Dönüştürmek istediğiniz dosyayı buraya bırakın veya göz atın',
+    genericSupportedTypesLine: 'PDF • DOC • DOCX • XLS • XLSX • JPG • PNG',
+    chooseActionHeading: 'Bu dosya ile ne yapmak istiyorsunuz?',
+    pickDifferentFile: 'Farklı bir dosya seç',
   },
 
   progress: {

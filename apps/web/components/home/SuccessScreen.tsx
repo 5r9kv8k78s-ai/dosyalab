@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { CheckCircle2, FileIcon } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/lib/i18n';
@@ -20,19 +19,10 @@ export function SuccessScreen({
   const { t } = useTranslation();
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="flex flex-col items-center gap-4 py-8 text-center"
-    >
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ duration: 0.35, ease: 'backOut', delay: 0.1 }}
-      >
+    <div className="animate-fade-in-up flex flex-col items-center gap-4 py-8 text-center">
+      <div className="animate-pop-in [animation-delay:100ms]">
         <CheckCircle2 className="text-success h-16 w-16" aria-hidden="true" />
-      </motion.div>
+      </div>
 
       <div>
         <p className="text-cardTitle text-foreground font-semibold">{t.success.title}</p>
@@ -57,6 +47,6 @@ export function SuccessScreen({
           {t.buttons.newConversion}
         </Button>
       </div>
-    </motion.div>
+    </div>
   );
 }

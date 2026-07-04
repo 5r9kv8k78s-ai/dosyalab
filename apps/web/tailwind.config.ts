@@ -58,18 +58,16 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
-      // Typography scale tokens: text-display, text-h1, text-h2, text-h3,
-      // text-body, text-small, text-button, plus the redesign's dedicated
-      // hero/heroSubtitle/cardTitle sizes (56/22/18).
+      // V3 typography scale: text-display (56), text-h1 (48), text-h2 (36),
+      // text-body (16), text-small (14) are the spec'd sizes; h3/cardTitle/
+      // button are unspec'd secondary sizes kept for existing call sites.
       fontSize: {
-        hero: ['2.875rem', { lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em' }],
-        display: ['3rem', { lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em' }],
-        h1: ['2.25rem', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.01em' }],
-        h2: ['1.875rem', { lineHeight: '1.25', fontWeight: '700' }],
+        display: ['3.5rem', { lineHeight: '1.1', fontWeight: '700', letterSpacing: '-0.02em' }],
+        h1: ['3rem', { lineHeight: '1.15', fontWeight: '700', letterSpacing: '-0.01em' }],
+        h2: ['2.25rem', { lineHeight: '1.2', fontWeight: '700' }],
         h3: ['1.5rem', { lineHeight: '1.3', fontWeight: '600' }],
-        heroSubtitle: ['1.375rem', { lineHeight: '1.5', fontWeight: '400' }],
         cardTitle: ['1.125rem', { lineHeight: '1.4', fontWeight: '600' }],
-        body: ['0.9375rem', { lineHeight: '1.6', fontWeight: '400' }],
+        body: ['1rem', { lineHeight: '1.6', fontWeight: '400' }],
         small: ['0.875rem', { lineHeight: '1.5', fontWeight: '400' }],
         button: ['0.9375rem', { lineHeight: '1', fontWeight: '600' }],
       },
@@ -79,6 +77,8 @@ const config: Config = {
         lg: 'var(--radius-lg)',
         xl: 'var(--radius-xl)',
         '2xl': 'var(--radius-2xl)',
+        btn: 'var(--radius-btn)',
+        upload: 'var(--radius-upload)',
         full: 'var(--radius-full)',
       },
       boxShadow: {
@@ -86,6 +86,7 @@ const config: Config = {
         md: 'var(--shadow-md)',
         lg: 'var(--shadow-lg)',
         xl: 'var(--shadow-xl)',
+        premium: 'var(--shadow-premium)',
       },
       transitionDuration: {
         fast: 'var(--duration-fast)',

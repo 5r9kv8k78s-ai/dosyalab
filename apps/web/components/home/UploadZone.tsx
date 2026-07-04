@@ -3,44 +3,57 @@
 import { UploadCloud } from 'lucide-react';
 import { Dropzone } from '@/components/ui/Dropzone';
 import { useTranslation } from '@/lib/i18n';
-import type { ToolConfig } from '@/lib/tools';
+import { cn } from '@/lib/utils';
 
-function supportedExtensionsLabel(accept: string): string {
-  return accept
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part.startsWith('.'))
-    .map((ext) => ext.slice(1).toUpperCase())
-    .filter((ext, index, all) => all.indexOf(ext) === index)
-    .join(' • ');
-}
-
+/**
+ * The homepage's star element (see V3 spec). Deliberately dumb/reusable —
+ * takes `accept`/`multiple`/labels as plain props rather than a `ToolConfig`
+ * so it can serve both the tool-less initial dropzone and the smaller
+ * "add more files" dropzone shown once a multi-file tool is selected.
+ */
 export function UploadZone({
-  tool,
+  accept,
+  multiple,
   disabled,
+  ariaLabel,
+  subtitleLine,
+  compact,
   onFiles,
 }: {
-  tool: ToolConfig;
+  accept: string;
+  multiple: boolean;
   disabled?: boolean;
+  ariaLabel: string;
+  subtitleLine: string;
+  /** Smaller variant used for the "add more files" dropzone under an
+   * already-selected multi-file tool — the big 320px star is only for the
+   * very first, tool-less drop. */
+  compact?: boolean;
   onFiles: (files: FileList | null) => void;
 }) {
   const { t } = useTranslation();
 
   return (
     <Dropzone
-      accept={tool.accept}
-      multiple={tool.multiple}
+      accept={accept}
+      multiple={multiple}
       disabled={disabled}
       onFiles={onFiles}
-      aria-label={t.upload.dropZoneAriaLabel(t.tools[tool.slug].title)}
-      className="from-surface to-primary/5 hover:border-primary min-h-[220px] rounded-[28px] border-2 border-dashed bg-gradient-to-br transition-all duration-200 hover:scale-[1.01] hover:shadow-lg"
+      aria-label={ariaLabel}
+      className={cn(
+        'from-surface to-primary/5 hover:border-primary rounded-upload hover:shadow-premium border-2 border-dashed bg-gradient-to-br transition-all duration-200 hover:scale-[1.01]',
+        compact ? 'min-h-[160px]' : 'min-h-[320px]',
+      )}
     >
-      <UploadCloud className="text-primary mb-4 h-12 w-12" aria-hidden="true" />
+      <UploadCloud
+        className={cn('text-primary mb-4', compact ? 'h-9 w-9' : 'h-12 w-12')}
+        aria-hidden="true"
+      />
       <p className="text-cardTitle text-foreground font-semibold">{t.upload.dropHere}</p>
       <p className="text-small text-muted mt-1">
         {t.upload.or} <span className="text-primary font-medium">{t.upload.chooseFile}</span>
       </p>
-      <p className="text-small text-muted mt-4">{supportedExtensionsLabel(tool.accept)}</p>
+      <p className="text-small text-muted mt-4">{subtitleLine}</p>
       <p className="text-muted mt-1 text-xs">{t.upload.maxSizeLabel}</p>
     </Dropzone>
   );

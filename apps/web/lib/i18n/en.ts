@@ -11,9 +11,9 @@ export const en: Translations = {
   },
 
   hero: {
-    title: 'Convert your documents in seconds.',
+    title: 'Drop your file. DosyaLab takes it from there.',
     subtitle:
-      'Convert your PDF, Word, Excel, and image files securely, quickly, and entirely in your browser.',
+      'Upload your PDF, Word, Excel, or image files. DosyaLab automatically analyzes your file and suggests the best actions.',
     privacyNote: 'Your files are deleted automatically once processing is complete.',
     badgeFast: 'Very Fast',
     badgeSecure: 'Secure',
@@ -163,6 +163,10 @@ export const en: Translations = {
     mergeHint: 'Two or more PDFs — up to 100MB each',
     selectedCount: (count: number) => `${count} PDFs selected — reorder if needed`,
     selectToolFirst: 'Select a tool first',
+    genericDropZoneAriaLabel: 'Drop the file you want to convert here, or browse',
+    genericSupportedTypesLine: 'PDF • DOC • DOCX • XLS • XLSX • JPG • PNG',
+    chooseActionHeading: 'What would you like to do with this file?',
+    pickDifferentFile: 'Choose a different file',
   },
 
   progress: {
