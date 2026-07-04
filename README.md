@@ -122,6 +122,39 @@ docker compose up --build
 - Frontend: http://localhost:3000
 - API: http://localhost:8000/api/v1/health
 
+## Admin Panel + database setup
+
+The Admin Panel (`/admin`) and persistent operations/feedback storage need a
+Supabase project (used here purely as a hosted Postgres + Auth provider —
+DosyaLab never stores uploaded/converted files there). Steps:
+
+1. **Create a Supabase project** at https://supabase.com — free tier is fine.
+2. **Get the Postgres connection string**: Project Settings → Database →
+   Connection string (URI). Set it as `DATABASE_URL` in `apps/api/.env`
+   (backend-only — never commit a real value, never expose it to the web app).
+3. **Get the public project URL and anon key**: Project Settings → API.
+   Set `SUPABASE_URL`/`ADMIN_EMAILS` in `apps/api/.env`, and
+   `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` in
+   `apps/web/.env` (the anon key is designed to be public browser
+   configuration — it grants no access without a valid signed-in session).
+4. **Create the admin Auth user manually** in the Supabase dashboard
+   (Authentication → Users → Add user). DosyaLab has no public signup —
+   this is the only way an admin account is created.
+5. **Add that email to `ADMIN_EMAILS`** in `apps/api/.env` (comma-separated
+   if more than one). A valid Supabase session alone does not grant Admin
+   Panel access — the backend independently checks this allowlist.
+6. **Run database migrations**:
+   ```bash
+   cd apps/api
+   alembic upgrade head
+   ```
+7. **Set `OPERATIONS_STORE_BACKEND=postgres`** in `apps/api/.env` once
+   step 6 has run (defaults to `memory`, which is fine for local dev
+   without a database).
+8. **Start the API**: `cd apps/api && uvicorn app.main:app --reload`.
+9. **Start the web app**: `cd apps/web && pnpm dev`, then sign in at
+   http://localhost:3000/admin/login with the email from step 4.
+
 ## Testing & linting
 
 ```bash
