@@ -20,26 +20,33 @@ class DocxValidationError(Exception):
     """Raised when an uploaded file fails DOCX validation.
 
     `status_code` lets the endpoint translate this straight into an HTTP
-    response without a separate mapping table.
+    response without a separate mapping table. `error_code` is a small,
+    stable category (see app/services/operations_events.py) for the
+    privacy-safe operations event, never the raw `message` text.
     """
 
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, error_code: str = "validation_failed"):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.error_code = error_code
 
 
 def validate_docx_extension(filename: str) -> None:
     if not filename.lower().endswith(".docx"):
-        raise DocxValidationError("Only DOCX files are accepted.")
+        raise DocxValidationError("Only DOCX files are accepted.", error_code="invalid_file_type")
 
 
 def validate_docx_size(size_bytes: int, max_size_mb: int) -> None:
     if size_bytes == 0:
-        raise DocxValidationError("The uploaded file is empty.")
+        raise DocxValidationError("The uploaded file is empty.", error_code="invalid_file_type")
     max_bytes = max_size_mb * 1024 * 1024
     if size_bytes > max_bytes:
-        raise DocxValidationError(f"File exceeds the {max_size_mb}MB size limit.", status_code=413)
+        raise DocxValidationError(
+            f"File exceeds the {max_size_mb}MB size limit.",
+            status_code=413,
+            error_code="file_too_large",
+        )
 
 
 def inspect_docx(path: Path) -> int:

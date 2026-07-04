@@ -30,11 +30,19 @@ from app.services.conversion import (
 from app.services.docx_validation import DocxValidationError
 from app.services.image_validation import ImageValidationError
 from app.services.jobs import JobStatus, job_store
+from app.services.operations_events import classify_input_family, record_operations_event
 from app.services.pdf_validation import PdfValidationError
+from app.services.rate_limiter import enforce_conversion_rate_limit
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/convert", tags=["convert"])
+
+# Applied to every conversion/upload route below (not to health, robots,
+# sitemap, or static asset routes — those aren't the expensive operation
+# this protects). See app/services/rate_limiter.py for the algorithm and
+# its documented process-local/fixed-window limitations.
+_RATE_LIMITED = [Depends(enforce_conversion_rate_limit)]
 
 # Keyed by output file suffix rather than converter slug, so the shared
 # download endpoint below stays correct for any future format without
@@ -53,6 +61,7 @@ _DEFAULT_MEDIA_TYPE = "application/octet-stream"
     "/pdf-to-docx",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_pdf_to_docx(
     background_tasks: BackgroundTasks,
@@ -66,6 +75,15 @@ async def convert_pdf_to_docx(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="pdf-to-docx",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("pdf-to-docx"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -76,6 +94,7 @@ async def convert_pdf_to_docx(
     "/docx-to-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_docx_to_pdf(
     background_tasks: BackgroundTasks,
@@ -89,6 +108,15 @@ async def convert_docx_to_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="docx-to-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("docx-to-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -99,6 +127,7 @@ async def convert_docx_to_pdf(
     "/pdf-to-xlsx",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_pdf_to_xlsx(
     background_tasks: BackgroundTasks,
@@ -112,6 +141,15 @@ async def convert_pdf_to_xlsx(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="pdf-to-xlsx",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("pdf-to-xlsx"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -122,6 +160,7 @@ async def convert_pdf_to_xlsx(
     "/images-to-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_images_to_pdf(
     background_tasks: BackgroundTasks,
@@ -138,6 +177,15 @@ async def convert_images_to_pdf(
                 "reason": exc.message,
             },
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="images-to-pdf",
+            status="validation_rejected",
+            file_count=len(files),
+            input_family=classify_input_family("images-to-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -148,6 +196,7 @@ async def convert_images_to_pdf(
     "/merge-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_merge_pdf(
     background_tasks: BackgroundTasks,
@@ -164,6 +213,15 @@ async def convert_merge_pdf(
                 "reason": exc.message,
             },
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="merge-pdf",
+            status="validation_rejected",
+            file_count=len(files),
+            input_family=classify_input_family("merge-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -174,6 +232,7 @@ async def convert_merge_pdf(
     "/split-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_split_pdf(
     background_tasks: BackgroundTasks,
@@ -188,6 +247,15 @@ async def convert_split_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="split-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("split-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -198,6 +266,7 @@ async def convert_split_pdf(
     "/compress-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_compress_pdf(
     background_tasks: BackgroundTasks,
@@ -211,6 +280,15 @@ async def convert_compress_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="compress-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("compress-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -221,6 +299,7 @@ async def convert_compress_pdf(
     "/rotate-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_rotate_pdf(
     background_tasks: BackgroundTasks,
@@ -236,6 +315,15 @@ async def convert_rotate_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="rotate-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("rotate-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -246,6 +334,7 @@ async def convert_rotate_pdf(
     "/delete-pages",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_delete_pages(
     background_tasks: BackgroundTasks,
@@ -260,6 +349,15 @@ async def convert_delete_pages(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="delete-pages",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("delete-pages"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -270,6 +368,7 @@ async def convert_delete_pages(
     "/extract-pages",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_extract_pages(
     background_tasks: BackgroundTasks,
@@ -284,6 +383,15 @@ async def convert_extract_pages(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="extract-pages",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("extract-pages"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -294,6 +402,7 @@ async def convert_extract_pages(
     "/reorder-pages",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_reorder_pages(
     background_tasks: BackgroundTasks,
@@ -308,6 +417,15 @@ async def convert_reorder_pages(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="reorder-pages",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("reorder-pages"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -318,6 +436,7 @@ async def convert_reorder_pages(
     "/watermark-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_watermark_pdf(
     background_tasks: BackgroundTasks,
@@ -335,6 +454,15 @@ async def convert_watermark_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="watermark-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("watermark-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -345,6 +473,7 @@ async def convert_watermark_pdf(
     "/protect-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_protect_pdf(
     background_tasks: BackgroundTasks,
@@ -360,6 +489,15 @@ async def convert_protect_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="protect-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("protect-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -370,6 +508,7 @@ async def convert_protect_pdf(
     "/unlock-pdf",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_unlock_pdf(
     background_tasks: BackgroundTasks,
@@ -384,6 +523,15 @@ async def convert_unlock_pdf(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="unlock-pdf",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("unlock-pdf"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -394,6 +542,7 @@ async def convert_unlock_pdf(
     "/pdf-to-images",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_pdf_to_images(
     background_tasks: BackgroundTasks,
@@ -409,6 +558,15 @@ async def convert_pdf_to_images(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="pdf-to-images",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("pdf-to-images"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -419,6 +577,7 @@ async def convert_pdf_to_images(
     "/extract-images",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_extract_images(
     background_tasks: BackgroundTasks,
@@ -432,6 +591,15 @@ async def convert_extract_images(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
         )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="extract-images",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("extract-images"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     background_tasks.add_task(run_conversion_job, job.id, settings)
@@ -442,6 +610,7 @@ async def convert_extract_images(
     "/extract-text",
     response_model=ConvertJobCreated,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=_RATE_LIMITED,
 )
 async def convert_extract_text(
     background_tasks: BackgroundTasks,
@@ -455,6 +624,15 @@ async def convert_extract_text(
         logger.warning(
             "convert.validation_failed",
             extra={"upload_filename": file.filename, "reason": exc.message},
+        )
+        record_operations_event(
+            event_type="conversion",
+            tool_slug="extract-text",
+            status="validation_rejected",
+            file_count=1,
+            input_family=classify_input_family("extract-text"),
+            duration_ms=None,
+            error_code=getattr(exc, "error_code", "validation_failed"),
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 

@@ -13,13 +13,18 @@ class PdfValidationError(Exception):
     """Raised when an uploaded file fails PDF validation.
 
     `status_code` lets the endpoint translate this straight into an HTTP
-    response without a separate mapping table.
+    response without a separate mapping table. `error_code` is a small,
+    stable category (see app/services/operations_events.py) used only for
+    the privacy-safe operations event recorded alongside the HTTP response —
+    never the raw `message` text, which may vary and isn't meant to be an
+    analytics dimension.
     """
 
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, error_code: str = "validation_failed"):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.error_code = error_code
 
 
 def secure_filename(filename: str | None) -> str:
@@ -39,15 +44,19 @@ def secure_filename(filename: str | None) -> str:
 
 def validate_pdf_extension(filename: str) -> None:
     if not filename.lower().endswith(".pdf"):
-        raise PdfValidationError("Only PDF files are accepted.")
+        raise PdfValidationError("Only PDF files are accepted.", error_code="invalid_file_type")
 
 
 def validate_pdf_size(size_bytes: int, max_size_mb: int) -> None:
     if size_bytes == 0:
-        raise PdfValidationError("The uploaded file is empty.")
+        raise PdfValidationError("The uploaded file is empty.", error_code="invalid_file_type")
     max_bytes = max_size_mb * 1024 * 1024
     if size_bytes > max_bytes:
-        raise PdfValidationError(f"File exceeds the {max_size_mb}MB size limit.", status_code=413)
+        raise PdfValidationError(
+            f"File exceeds the {max_size_mb}MB size limit.",
+            status_code=413,
+            error_code="file_too_large",
+        )
 
 
 def inspect_pdf_allow_encrypted(path: Path) -> None:

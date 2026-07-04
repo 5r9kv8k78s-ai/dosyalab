@@ -58,6 +58,26 @@ class Settings(BaseSettings):
     job_ttl_minutes: int = 60
     cleanup_interval_minutes: int = 10
 
+    # Public-production abuse protection for the conversion/upload surface
+    # (see app/services/rate_limiter.py) — a process-local fixed-window
+    # limiter, since no shared datastore (Redis, etc.) exists in this
+    # deployment yet. 20 requests per 60s per client is generous for normal
+    # interactive use (a batch upload is one request, not one per file)
+    # while still blocking rapid automated abuse.
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 20
+    rate_limit_window_seconds: int = 60
+
+    # Privacy-safe operational event tracking for the future Admin Panel
+    # (see app/services/operations_events.py) — in-memory only, bounded by
+    # both a max event count and a retention window so it can never grow
+    # unbounded. 5000 events / 7 days is a lightweight V1 default; a real
+    # datastore is required before this is relied on for production
+    # reporting (events are lost on restart and are per-replica).
+    operations_events_enabled: bool = True
+    operations_events_max_count: int = 5000
+    operations_events_retention_seconds: int = 7 * 24 * 60 * 60
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

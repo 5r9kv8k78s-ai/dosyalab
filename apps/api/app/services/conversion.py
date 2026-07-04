@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from app.services.image_validation import (
     validate_image_size,
 )
 from app.services.jobs import ConversionJob, JobStatus, job_store
+from app.services.operations_events import classify_input_family, record_operations_event
 from app.services.pdf_params import parse_page_list, validate_pages_in_range
 from app.services.pdf_validation import (
     PdfValidationError,
@@ -208,10 +210,13 @@ async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) 
     since a plain directory listing isn't guaranteed to.
     """
     if not files:
-        raise ImageValidationError("At least one image is required.")
+        raise ImageValidationError(
+            "At least one image is required.", error_code="invalid_file_count"
+        )
     if len(files) > settings.max_batch_file_count:
         raise ImageValidationError(
-            f"Too many files in one request (max {settings.max_batch_file_count})."
+            f"Too many files in one request (max {settings.max_batch_file_count}).",
+            error_code="batch_too_large",
         )
 
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
@@ -245,6 +250,7 @@ async def submit_images_to_pdf_job(files: list[UploadFile], settings: Settings) 
         module_slug=IMAGES_TO_PDF_SLUG,
         source_path=job_upload_dir,
         download_filename=download_filename,
+        file_count=len(files),
     )
     logger.info(
         "convert.job_created",
@@ -267,10 +273,13 @@ async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> C
     directory listing.
     """
     if len(files) < 2:
-        raise PdfValidationError("At least two PDF files are required to merge.")
+        raise PdfValidationError(
+            "At least two PDF files are required to merge.", error_code="invalid_file_count"
+        )
     if len(files) > settings.max_batch_file_count:
         raise PdfValidationError(
-            f"Too many files in one request (max {settings.max_batch_file_count})."
+            f"Too many files in one request (max {settings.max_batch_file_count}).",
+            error_code="batch_too_large",
         )
 
     job_upload_dir = settings.convert_upload_dir / uuid.uuid4().hex
@@ -299,6 +308,7 @@ async def submit_merge_pdf_job(files: list[UploadFile], settings: Settings) -> C
         module_slug=MERGE_PDF_SLUG,
         source_path=job_upload_dir,
         download_filename="merged.pdf",
+        file_count=len(files),
     )
     logger.info(
         "convert.job_created",
@@ -938,13 +948,21 @@ async def submit_extract_text_job(
 
 
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
-    """Run the registered converter for a job in a worker thread, tracking progress."""
+    """Run the registered converter for a job in a worker thread, tracking
+    progress — and the one shared point every tool's actual conversion
+    outcome passes through, regardless of which of the 17 endpoints
+    submitted it. This is where the operations event's `success`/`failure`
+    row is recorded (see app/services/operations_events.py), with
+    `duration_ms` measuring the real conversion work below, not the
+    upload/validation time already spent before this background task started.
+    """
     job = job_store.get(job_id)
     if job is None:
         return
 
     job_store.update(job_id, status=JobStatus.PROCESSING, progress=10)
     ticker = asyncio.create_task(_tick_progress(job_id))
+    started_at = time.monotonic()
 
     try:
         converter = get_converter(job.module_slug)
@@ -956,6 +974,15 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         )
         job_store.update(job_id, status=JobStatus.COMPLETED, progress=100, output_path=output_path)
         logger.info("convert.job_completed", extra={"job_id": job_id})
+        record_operations_event(
+            event_type="conversion",
+            tool_slug=job.module_slug,
+            status="success",
+            file_count=job.file_count,
+            input_family=classify_input_family(job.module_slug),
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            error_code=None,
+        )
     except Exception:
         job_store.update(
             job_id,
@@ -963,6 +990,15 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
             error="Conversion failed. The file may use unsupported features — try a different one.",
         )
         logger.exception("convert.job_failed", extra={"job_id": job_id})
+        record_operations_event(
+            event_type="conversion",
+            tool_slug=job.module_slug,
+            status="failure",
+            file_count=job.file_count,
+            input_family=classify_input_family(job.module_slug),
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            error_code="conversion_failed",
+        )
     finally:
         ticker.cancel()
         # Images-to-PDF jobs store source_path as a directory of ordered
