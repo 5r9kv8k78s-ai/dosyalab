@@ -8,6 +8,7 @@ export const tr = {
   common: {
     brandName: 'DosyaLab',
     file: 'dosya',
+    brandTagline: "Türkiye'nin dosya platformu",
   },
 
   hero: {

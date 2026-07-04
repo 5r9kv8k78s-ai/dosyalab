@@ -8,6 +8,7 @@ export const en: Translations = {
   common: {
     brandName: 'DosyaLab',
     file: 'file',
+    brandTagline: "Türkiye's file platform",
   },
 
   hero: {

@@ -16,6 +16,7 @@ export function SiteHeader() {
           <DosyaLabLogo
             showWordmark
             wordmark={t.common.brandName}
+            tagline={t.common.brandTagline}
             className="text-primary h-[30px] w-[30px] sm:h-9 sm:w-9"
           />
         </Link>

@@ -13,6 +13,12 @@ export interface DosyaLabLogoProps {
    * pass `t.common.brandName` to keep it flowing through i18n even though
    * the string itself is identical in every locale. */
   wordmark?: string;
+  /** Optional small brand signature line rendered under the wordmark (e.g.
+   * "Türkiye'nin dosya platformu"). Ignored unless `showWordmark` is also
+   * set. Hidden below the `sm` breakpoint and marked `aria-hidden` — the
+   * logo link's accessible name already identifies the brand, so this is
+   * purely a visual signature, not additional announced text. */
+  tagline?: string;
 }
 
 /**
@@ -27,6 +33,7 @@ export function DosyaLabLogo({
   className,
   showWordmark = false,
   wordmark = 'DosyaLab',
+  tagline,
 }: DosyaLabLogoProps) {
   return (
     <span className="inline-flex items-center gap-2 sm:gap-2.5">
@@ -48,7 +55,19 @@ export function DosyaLabLogo({
         />
       </svg>
       {showWordmark && (
-        <span className="text-foreground text-xl font-bold sm:text-2xl">{wordmark}</span>
+        <span className="flex flex-col justify-center">
+          <span className="text-foreground text-xl font-bold leading-tight sm:text-2xl">
+            {wordmark}
+          </span>
+          {tagline && (
+            <span
+              aria-hidden="true"
+              className="text-muted mt-0.5 hidden text-[11px] font-medium leading-tight sm:block"
+            >
+              {tagline}
+            </span>
+          )}
+        </span>
       )}
     </span>
   );
