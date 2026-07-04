@@ -35,6 +35,18 @@ export interface ToolConfig {
   multiple: boolean;
   /** Only meaningful when `multiple` is true — defaults to 1. */
   minFiles?: number;
+  /** Only meaningful when `multiple` is true — omit for "no upper limit",
+   * which matches every current multi-file backend endpoint (merge-pdf,
+   * images-to-pdf): both accept `list[UploadFile]` with no length cap, per
+   * `apps/api/app/services/conversion.py`. */
+  maxFiles?: number;
+  /** Whether this tool's backend endpoint accepts a batch mixing more than
+   * one {@link FileType} in a single request. No current endpoint does —
+   * every `/api/v1/convert/*` route takes either one `UploadFile` or a
+   * `list[UploadFile]` of a single expected kind — so this is always
+   * false/omitted today, but is a real, inspected capability rather than an
+   * assumption baked into calling code. */
+  supportsMixedTypes?: boolean;
   /** Extra form fields sent alongside the file(s), in addition to file/files.
    * Each field's label/placeholder/hint is looked up in the i18n tree via
    * `t.toolFields["{slug}.{name}"]` — see lib/i18n/tr.ts. */
