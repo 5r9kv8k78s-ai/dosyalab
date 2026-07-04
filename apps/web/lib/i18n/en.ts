@@ -222,6 +222,30 @@ export const en: Translations = {
     subtitle: 'Your file was prepared successfully.',
   },
 
+  pdfWorkspace: {
+    back: 'Back',
+    pageCountLabel: (count: number) => `${count} pages`,
+    pageLabel: (pageNumber: number) => `Page ${pageNumber}`,
+    preparingPdf: 'Preparing PDF…',
+    selectAll: 'Select All',
+    clearSelection: 'Clear Selection',
+    selectedCount: (count: number) => `${count} pages selected`,
+    previewErrorTitle: "This PDF couldn't be previewed.",
+    previewErrorBody: 'Your file may be corrupted or password-protected.',
+    backButton: 'Go Back',
+    delete: {
+      title: 'Select the pages to delete',
+      helper: 'Select the pages you want to remove from your PDF.',
+      action: 'Delete Selected Pages',
+      allSelectedError: 'Every page in this PDF cannot be deleted.',
+    },
+    extract: {
+      title: 'Select the pages to extract',
+      helper: 'Select the pages you want to build a new PDF from.',
+      action: 'Extract Selected Pages',
+    },
+  },
+
   status: {
     checking: 'Checking backend…',
     online: 'Backend Online',

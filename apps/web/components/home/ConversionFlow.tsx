@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { PdfWorkspace } from '@/components/pdf-workspace/PdfWorkspace';
 import { FileTypeIcon, type FileType } from '@/components/icons/FileTypeIcon';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/lib/i18n';
 import { useToolConversion } from '@/lib/hooks/useToolConversion';
+import { getPdfWorkspaceMode } from '@/lib/pdf/workspaceMode';
 import {
   GENERIC_UPLOAD_ACCEPT,
   inferFileType,
@@ -154,6 +156,18 @@ export function ConversionFlow() {
     start(files, fieldValues);
   }, [fieldValues, files, start]);
 
+  const handleWorkspaceConfirm = useCallback(
+    (values: Record<string, string>) => {
+      setFieldValues(values);
+      start(files, values);
+    },
+    [files, start],
+  );
+
+  const handleWorkspaceBack = useCallback(() => {
+    setSelectedTool(null);
+  }, []);
+
   const handleReset = useCallback(() => {
     setCategory(null);
     setSelectedTool(null);
@@ -171,6 +185,7 @@ export function ConversionFlow() {
   }, [reset]);
 
   const categoryTools = category ? toolsByFileType(category) : [];
+  const workspaceMode = selectedTool ? getPdfWorkspaceMode(selectedTool.slug) : null;
   const missingRequiredField =
     selectedTool?.fields.some((field) => field.required && !fieldValues[field.name]?.trim()) ??
     false;
@@ -223,6 +238,15 @@ export function ConversionFlow() {
 
           {categoryTools.length === 0 ? (
             <p className="text-small text-muted mt-6 text-center">{t.categories.emptyState}</p>
+          ) : workspaceMode && files[0] ? (
+            <div className="mt-8">
+              <PdfWorkspace
+                file={files[0]}
+                mode={workspaceMode}
+                onBack={handleWorkspaceBack}
+                onConfirm={handleWorkspaceConfirm}
+              />
+            </div>
           ) : (
             <>
               <h2 className="text-h3 text-foreground mt-8 text-center">

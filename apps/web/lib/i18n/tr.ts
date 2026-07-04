@@ -224,6 +224,30 @@ export const tr = {
     subtitle: 'Dosyanız başarıyla hazırlandı.',
   },
 
+  pdfWorkspace: {
+    back: 'Geri',
+    pageCountLabel: (count: number) => `${count} sayfa`,
+    pageLabel: (pageNumber: number) => `Sayfa ${pageNumber}`,
+    preparingPdf: 'PDF hazırlanıyor…',
+    selectAll: 'Tümünü Seç',
+    clearSelection: 'Seçimi Temizle',
+    selectedCount: (count: number) => `${count} sayfa seçildi`,
+    previewErrorTitle: 'Bu PDF önizlenemedi.',
+    previewErrorBody: 'Dosyanız bozuk veya parola korumalı olabilir.',
+    backButton: 'Geri Dön',
+    delete: {
+      title: 'Silinecek sayfaları seçin',
+      helper: 'PDF dosyanızdan kaldırmak istediğiniz sayfaları seçin.',
+      action: 'Seçili Sayfaları Sil',
+      allSelectedError: 'PDF dosyasındaki tüm sayfalar silinemez.',
+    },
+    extract: {
+      title: 'Çıkartılacak sayfaları seçin',
+      helper: 'Yeni bir PDF oluşturmak istediğiniz sayfaları seçin.',
+      action: 'Seçili Sayfaları Çıkart',
+    },
+  },
+
   status: {
     checking: 'Sunucu kontrol ediliyor…',
     online: 'Backend Çevrimiçi',
