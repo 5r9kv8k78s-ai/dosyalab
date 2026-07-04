@@ -83,6 +83,7 @@ async def convert_pdf_to_docx(
             input_family=classify_input_family("pdf-to-docx"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -116,6 +117,7 @@ async def convert_docx_to_pdf(
             input_family=classify_input_family("docx-to-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -149,6 +151,7 @@ async def convert_pdf_to_xlsx(
             input_family=classify_input_family("pdf-to-xlsx"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -185,6 +188,7 @@ async def convert_images_to_pdf(
             input_family=classify_input_family("images-to-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -221,6 +225,7 @@ async def convert_merge_pdf(
             input_family=classify_input_family("merge-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -255,6 +260,7 @@ async def convert_split_pdf(
             input_family=classify_input_family("split-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -288,6 +294,7 @@ async def convert_compress_pdf(
             input_family=classify_input_family("compress-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -323,6 +330,7 @@ async def convert_rotate_pdf(
             input_family=classify_input_family("rotate-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -357,6 +365,7 @@ async def convert_delete_pages(
             input_family=classify_input_family("delete-pages"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -391,6 +400,7 @@ async def convert_extract_pages(
             input_family=classify_input_family("extract-pages"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -425,6 +435,7 @@ async def convert_reorder_pages(
             input_family=classify_input_family("reorder-pages"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -462,6 +473,7 @@ async def convert_watermark_pdf(
             input_family=classify_input_family("watermark-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -497,6 +509,7 @@ async def convert_protect_pdf(
             input_family=classify_input_family("protect-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -531,6 +544,7 @@ async def convert_unlock_pdf(
             input_family=classify_input_family("unlock-pdf"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -566,6 +580,7 @@ async def convert_pdf_to_images(
             input_family=classify_input_family("pdf-to-images"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -599,6 +614,7 @@ async def convert_extract_images(
             input_family=classify_input_family("extract-images"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -633,6 +649,7 @@ async def convert_extract_text(
             input_family=classify_input_family("extract-text"),
             duration_ms=None,
             error_code=getattr(exc, "error_code", "validation_failed"),
+            settings=settings,
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 

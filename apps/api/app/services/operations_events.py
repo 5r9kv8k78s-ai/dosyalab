@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal, Protocol
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -439,16 +439,20 @@ class PostgresOperationsEventStore:
                     row.created_at >= since, row.event_type == "rate_limit_rejection"
                 )
             ) or 0
-            avg_duration = session.scalar(
-                select(func.avg(row.duration_ms)).select_from(
-                    conversions.where(row.duration_ms.is_not(None)).subquery()
-                )
+            # `func.avg(row.duration_ms)`/`func.sum(row.file_count)` reference
+            # the original table's columns, not the filtered subquery's —
+            # combined with `.select_from(subquery)` that produced a
+            # cartesian product between the two (SQLAlchemy warned; the
+            # aggregate silently ran over the whole table, not the filtered
+            # rows). Selecting the subquery's own `.c` column fixes this.
+            duration_subquery = conversions.where(row.duration_ms.is_not(None)).subquery()
+            avg_duration = session.scalar(select(func.avg(duration_subquery.c.duration_ms)))
+
+            success_subquery = conversions.where(row.status == "success").subquery()
+            total_files = (
+                session.scalar(select(func.coalesce(func.sum(success_subquery.c.file_count), 0)))
+                or 0
             )
-            total_files = session.scalar(
-                select(func.coalesce(func.sum(row.file_count), 0)).select_from(
-                    conversions.where(row.status == "success").subquery()
-                )
-            ) or 0
 
         return OverviewMetrics(
             conversion_attempts=attempts,
@@ -581,14 +585,23 @@ def record_operations_event(
     input_family: InputFamily,
     duration_ms: int | None,
     error_code: ErrorCode | None,
+    settings: Settings | None = None,
 ) -> None:
     """Safe entry point every caller should use instead of the store
     directly — respects `OPERATIONS_EVENTS_ENABLED` and never lets a
     tracking failure propagate into the actual conversion request/response
     (logged instead, per the "instrumentation must not become a hard
     dependency for conversion success" requirement).
+
+    Callers that already have a resolved `Settings` instance in scope
+    (e.g. `run_conversion_job`, or a convert.py endpoint's own
+    `Depends(get_settings)`) should pass it through here — otherwise this
+    re-derives it via a fresh `get_settings()` call, which is correct for
+    production (one process-wide cached settings object) but means a
+    request-scoped settings override (as tests use) would silently not
+    apply to this specific check.
     """
-    settings = get_settings()
+    settings = settings or get_settings()
     if not settings.operations_events_enabled:
         return
 

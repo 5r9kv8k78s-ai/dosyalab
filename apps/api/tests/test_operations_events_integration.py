@@ -68,6 +68,11 @@ def test_operations_events_disabled_setting_records_nothing(
     from app.core.config import Settings
     from app.main import app
 
+    # Reset first: this store singleton is shared across every test in this
+    # file (see module docstring) — without this, a real event recorded by
+    # an earlier test in this same file/run would still be sitting in the
+    # store when this test makes its assertion below, even though nothing
+    # was recorded by *this* test's own (disabled) request.
     _reset_store()
     settings = Settings(
         upload_dir=tmp_path / "uploads",

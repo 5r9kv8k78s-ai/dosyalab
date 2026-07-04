@@ -146,6 +146,7 @@ async def enforce_conversion_rate_limit(
         input_family=classify_input_family(tool_slug),
         duration_ms=None,
         error_code="rate_limited",
+        settings=settings,
     )
     logger.warning("rate_limit.rejected", extra={"tool_slug": tool_slug})
     raise HTTPException(
@@ -196,6 +197,7 @@ async def enforce_feedback_rate_limit(
         input_family="unknown",
         duration_ms=None,
         error_code="rate_limited",
+        settings=settings,
     )
     logger.warning("rate_limit.rejected", extra={"tool_slug": "feedback"})
     raise HTTPException(

@@ -982,6 +982,7 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
             input_family=classify_input_family(job.module_slug),
             duration_ms=int((time.monotonic() - started_at) * 1000),
             error_code=None,
+            settings=settings,
         )
     except Exception:
         job_store.update(
@@ -998,6 +999,7 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
             input_family=classify_input_family(job.module_slug),
             duration_ms=int((time.monotonic() - started_at) * 1000),
             error_code="conversion_failed",
+            settings=settings,
         )
     finally:
         ticker.cancel()
