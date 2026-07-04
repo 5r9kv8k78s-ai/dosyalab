@@ -169,6 +169,29 @@ export const en: Translations = {
     pickDifferentFile: 'Choose a different file',
   },
 
+  batch: {
+    recommendedBadge: 'Recommended',
+    pdfFilesDetected: (count: number) => `${count} PDF files detected`,
+    imagesDetected: (count: number) => `${count} images detected`,
+    filesSelected: (count: number) => `${count} files selected`,
+    totalSizeLabel: (size: string) => `Total size: ${size}`,
+    addFiles: 'Add files',
+    addMoreDropZoneAriaLabel: 'Drop more files here, or click to browse, to add to this batch',
+    moreFilesTruncated: (count: number) => `+${count} files more`,
+    showAll: 'Show all',
+    showLess: 'Show less',
+    clearFiles: 'Clear files',
+    differentTypesDetected: 'Different file types detected',
+    mixedFilesExplanation:
+      "These files can't be processed together because there's no shared conversion for this combination. Select only files of the same type (for example, only PDFs or only images) to continue.",
+    unsupportedFileSetTitle: 'Unsupported file combination',
+    noCompatibleToolBody:
+      "There's no shared operation for this many files of this type. Reduce the number of files and try again.",
+    incompatibleFileNotAdded: (fileName: string) =>
+      `${fileName} isn't compatible with your current file batch, so it wasn't added.`,
+    validationLiveRegionLabel: 'File validation message',
+  },
+
   progress: {
     uploading: 'Uploading…',
     processing: 'Processing…',

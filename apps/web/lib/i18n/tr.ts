@@ -171,6 +171,31 @@ export const tr = {
     pickDifferentFile: 'Farklı bir dosya seç',
   },
 
+  // Multi-file batch summary + contextual suggestions (see FileBatchSummary,
+  // ConversionFlow, lib/files/analyzeFileSet.ts).
+  batch: {
+    recommendedBadge: 'Önerilen',
+    pdfFilesDetected: (count: number) => `${count} PDF dosyası algılandı`,
+    imagesDetected: (count: number) => `${count} görsel algılandı`,
+    filesSelected: (count: number) => `${count} dosya seçildi`,
+    totalSizeLabel: (size: string) => `Toplam boyut: ${size}`,
+    addFiles: 'Dosya ekle',
+    addMoreDropZoneAriaLabel: 'Gruba eklemek için daha fazla dosya sürükleyin veya göz atın',
+    moreFilesTruncated: (count: number) => `+${count} dosya daha`,
+    showAll: 'Tümünü göster',
+    showLess: 'Daha az göster',
+    clearFiles: 'Dosyaları temizle',
+    differentTypesDetected: 'Farklı dosya türleri algılandı',
+    mixedFilesExplanation:
+      'Bu dosyalar birlikte işlenemiyor çünkü aralarında ortak bir dönüştürme işlemi bulunmuyor. Devam etmek için yalnızca aynı türden dosyalar (örneğin yalnızca PDF ya da yalnızca görsel) seçin.',
+    unsupportedFileSetTitle: 'Desteklenmeyen dosya kombinasyonu',
+    noCompatibleToolBody:
+      'Bu sayıda ve türde dosya için ortak bir işlem bulunmuyor. Dosya sayısını azaltıp tekrar deneyin.',
+    incompatibleFileNotAdded: (fileName: string) =>
+      `${fileName} mevcut dosya grubunuzla uyumlu değil, eklenmedi.`,
+    validationLiveRegionLabel: 'Dosya doğrulama mesajı',
+  },
+
   progress: {
     uploading: 'Yükleniyor…',
     processing: 'İşleniyor…',

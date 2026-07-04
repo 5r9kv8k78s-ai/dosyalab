@@ -1,38 +1,33 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PdfWorkspace } from '@/components/pdf-workspace/PdfWorkspace';
-import { FileTypeIcon, type FileType } from '@/components/icons/FileTypeIcon';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/lib/i18n';
 import { useToolConversion } from '@/lib/hooks/useToolConversion';
 import { getPdfWorkspaceMode } from '@/lib/pdf/workspaceMode';
+import { analyzeFileSet } from '@/lib/files/analyzeFileSet';
+import { MAX_FILE_SIZE_BYTES } from '@/lib/files/validateFilesForTool';
 import {
   GENERIC_UPLOAD_ACCEPT,
+  TOOLS,
   inferFileType,
   toolsByFileType,
   type ToolConfig,
+  type ToolSlug,
 } from '@/lib/tools';
+import { FileBatchSummary } from './FileBatchSummary';
 import { ParameterCard } from './ParameterCard';
 import { ProgressFlow } from './ProgressFlow';
-import { SelectedFilesList } from './SelectedFilesList';
 import { SuccessScreen } from './SuccessScreen';
 import { ToolCards } from './ToolCards';
 import { UploadZone } from './UploadZone';
 
-const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 // `useToolConversion` always needs a ToolConfig — this stands in only while
 // no tool is selected yet (before a file is dropped, `start()` is never
 // reachable from the UI, so its slug/multiple are never actually used).
 const FALLBACK_TOOL = toolsByFileType('pdf')[0];
-
-function extensionsFromAccept(accept: string): string[] {
-  return accept
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part.startsWith('.'));
-}
 
 function initialFieldValues(tool: ToolConfig): Record<string, string> {
   return Object.fromEntries(tool.fields.map((field) => [field.name, field.defaultValue ?? '']));
@@ -46,106 +41,116 @@ function moveItem<T>(items: T[], index: number, direction: -1 | 1): T[] {
   return next;
 }
 
-/** Narrows a raw dropped batch down to what a given tool can actually use —
- * matching extensions only, and a single file unless the tool allows more. */
-function filesForTool(candidates: File[], tool: ToolConfig): File[] {
-  const allowedExtensions = extensionsFromAccept(tool.accept);
-  const matching = candidates.filter((file) =>
-    allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
-  );
-  return tool.multiple ? matching : matching.slice(0, 1);
+function toolBySlug(slug: ToolSlug | null): ToolConfig | null {
+  if (!slug) return null;
+  return TOOLS.find((tool) => tool.slug === slug) ?? null;
 }
 
 export function ConversionFlow() {
   const { t } = useTranslation();
 
-  const [category, setCategory] = useState<FileType | null>(null);
-  const [selectedTool, setSelectedTool] = useState<ToolConfig | null>(null);
-  const [rawFiles, setRawFiles] = useState<File[]>([]);
+  // The whole dropped/added batch — always analyzed in full (never just
+  // files[0]) by `analyzeFileSet`, which is the single source of truth for
+  // which tools are compatible with it. See lib/files/analyzeFileSet.ts.
   const [files, setFiles] = useState<File[]>([]);
+  const [manualToolSlug, setManualToolSlug] = useState<ToolSlug | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [pickError, setPickError] = useState<string | null>(null);
+  const [addFileNotice, setAddFileNotice] = useState<string | null>(null);
+
+  const analysis = useMemo(() => analyzeFileSet(files), [files]);
+
+  // The active tool is derived, not stored directly: a user's manual pick
+  // (clicking a different ToolCard) sticks around only while it stays
+  // compatible with the current batch. The moment the batch changes in a
+  // way that invalidates it (e.g. a second PDF is added, so a single-file
+  // tool no longer applies), this automatically falls back to the batch's
+  // `primaryToolId` — which is what makes add/remove-file re-analysis work
+  // without any special-cased "switch back" logic.
+  const selectedTool = useMemo(() => {
+    if (manualToolSlug && analysis.compatibleToolIds.includes(manualToolSlug)) {
+      return toolBySlug(manualToolSlug);
+    }
+    return toolBySlug(analysis.primaryToolId);
+  }, [manualToolSlug, analysis]);
+
+  const compatibleTools = useMemo(
+    () =>
+      analysis.compatibleToolIds
+        .map((slug) => toolBySlug(slug))
+        .filter((tool): tool is ToolConfig => !!tool),
+    [analysis.compatibleToolIds],
+  );
 
   const { state, start, reset, redownload } = useToolConversion(selectedTool ?? FALLBACK_TOOL);
 
-  const validateAgainst = useCallback(
-    (candidates: File[], tool: ToolConfig): string | null => {
-      const allowedExtensions = extensionsFromAccept(tool.accept);
-      const invalidFile = candidates.find(
-        (file) => !allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
-      );
-      if (invalidFile) {
-        return t.errors.unsupportedFileTypeFor(invalidFile.name, t.tools[tool.slug].title);
-      }
-      const oversizedFile = candidates.find((file) => file.size > MAX_FILE_SIZE_BYTES);
-      if (oversizedFile) return t.errors.fileTooLargeDetail(oversizedFile.name);
-      return null;
-    },
-    [t.errors, t.tools],
+  const oversizedFile = useMemo(
+    () => files.find((file) => file.size > MAX_FILE_SIZE_BYTES),
+    [files],
   );
 
-  const handleToolSelect = useCallback(
-    (tool: ToolConfig) => {
-      setSelectedTool(tool);
-      setFieldValues(initialFieldValues(tool));
-      setFiles(filesForTool(rawFiles, tool));
-      setPickError(null);
+  // Resets the parameter form (and any stale conversion state) whenever the
+  // *effective* tool changes — whether from a manual click or an automatic
+  // re-analysis fallback — but not on every render.
+  const prevToolSlugRef = useRef<ToolSlug | null>(null);
+  useEffect(() => {
+    const slug = selectedTool?.slug ?? null;
+    if (slug !== prevToolSlugRef.current) {
+      prevToolSlugRef.current = slug;
+      setFieldValues(selectedTool ? initialFieldValues(selectedTool) : {});
       reset();
-    },
-    [rawFiles, reset],
-  );
+    }
+  }, [selectedTool, reset]);
 
-  const handleInitialFiles = useCallback(
+  const handleInitialFiles = useCallback((fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setAddFileNotice(null);
+    setManualToolSlug(null);
+    setFiles(Array.from(fileList));
+  }, []);
+
+  const handleAddFiles = useCallback(
     (fileList: FileList | null) => {
       if (!fileList || fileList.length === 0) return;
       const picked = Array.from(fileList);
-      const detected = inferFileType(picked[0].name);
-      if (!detected) {
-        setPickError(t.errors.invalidFileType);
-        return;
-      }
+      const currentType = analysis.detectedTypes[0] ?? null;
 
-      const tool = toolsByFileType(detected)[0] as ToolConfig | undefined;
-      if (tool) {
-        const error = validateAgainst(picked, tool);
-        if (error) {
-          setPickError(error);
-          return;
+      const accepted: File[] = [];
+      let rejectionMessage: string | null = null;
+      for (const file of picked) {
+        const type = inferFileType(file.name);
+        if (type === null || (currentType && type !== currentType)) {
+          rejectionMessage = t.batch.incompatibleFileNotAdded(file.name);
+          continue;
         }
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          rejectionMessage = t.errors.fileTooLargeDetail(file.name);
+          continue;
+        }
+        accepted.push(file);
       }
 
-      setPickError(null);
-      setCategory(detected);
-      setRawFiles(picked);
-      setSelectedTool(tool ?? null);
-      setFieldValues(tool ? initialFieldValues(tool) : {});
-      setFiles(tool ? filesForTool(picked, tool) : []);
-    },
-    [t.errors, validateAgainst],
-  );
-
-  const handleAddMoreFiles = useCallback(
-    (fileList: FileList | null) => {
-      if (!fileList || !selectedTool) return;
-      const picked = Array.from(fileList);
-      const error = validateAgainst(picked, selectedTool);
-      if (error) {
-        setPickError(error);
-        return;
+      // The existing valid batch is always preserved — incompatible files
+      // are simply not added, never silently merged in and never allowed
+      // to wipe out what was already there.
+      setAddFileNotice(rejectionMessage);
+      if (accepted.length > 0) {
+        setFiles((prev) => [...prev, ...accepted]);
       }
-      setPickError(null);
-      setRawFiles((prev) => [...prev, ...picked]);
-      setFiles((prev) => [...prev, ...picked]);
     },
-    [selectedTool, validateAgainst],
+    [analysis.detectedTypes, t.batch, t.errors],
   );
 
-  const removeFile = useCallback((index: number) => {
+  const handleRemoveFile = useCallback((index: number) => {
+    setAddFileNotice(null);
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const moveFile = useCallback((index: number, direction: -1 | 1) => {
+  const handleMoveFile = useCallback((index: number, direction: -1 | 1) => {
     setFiles((prev) => moveItem(prev, index, direction));
+  }, []);
+
+  const handleToolSelect = useCallback((tool: ToolConfig) => {
+    setManualToolSlug(tool.slug);
   }, []);
 
   const updateField = useCallback((name: string, value: string) => {
@@ -165,39 +170,42 @@ export function ConversionFlow() {
   );
 
   const handleWorkspaceBack = useCallback(() => {
-    setSelectedTool(null);
+    setManualToolSlug(null);
+    setFiles([]);
   }, []);
 
   const handleReset = useCallback(() => {
-    setCategory(null);
-    setSelectedTool(null);
-    setRawFiles([]);
     setFiles([]);
+    setManualToolSlug(null);
     setFieldValues({});
-    setPickError(null);
+    setAddFileNotice(null);
     reset();
   }, [reset]);
 
   const handleTryAgain = useCallback(() => {
-    setFiles([]);
-    setPickError(null);
     reset();
   }, [reset]);
 
-  const categoryTools = category ? toolsByFileType(category) : [];
-  const workspaceMode = selectedTool ? getPdfWorkspaceMode(selectedTool.slug) : null;
+  const category = analysis.detectedTypes.length === 1 ? analysis.detectedTypes[0] : null;
+  // The visual PDF page workspace (Delete/Extract/Reorder) is a single-PDF
+  // experience only — for a multi-PDF batch, `selectedTool` can only ever
+  // be Merge PDF (the sole compatible tool), which has no workspace mode,
+  // so this gate falls through to the ordinary ToolCards grid automatically.
+  const workspaceMode =
+    files.length === 1 && selectedTool ? getPdfWorkspaceMode(selectedTool.slug) : null;
+
   const missingRequiredField =
     selectedTool?.fields.some((field) => field.required && !fieldValues[field.name]?.trim()) ??
     false;
-  const minFiles = selectedTool ? (selectedTool.multiple ? (selectedTool.minFiles ?? 1) : 1) : 1;
-  const canStart = !!selectedTool && files.length >= minFiles && !missingRequiredField;
-  const needsMoreFiles = !!selectedTool?.multiple && files.length < minFiles;
+  const canStart = !!selectedTool && !oversizedFile && !missingRequiredField && files.length > 0;
   const isIdle = state.stage === 'idle';
   const isBusy = !isIdle && state.stage !== 'error' && state.stage !== 'completed';
+  const canAddMoreFiles = isIdle && category !== null && analysis.validationReason === null;
+  const recommendedSlug = analysis.isBatch ? analysis.primaryToolId : null;
 
   return (
     <section id="tools" className="mx-auto w-full max-w-[1200px] px-5 pb-16 sm:px-6">
-      {isIdle && (
+      {isIdle && files.length === 0 && (
         <div className="mx-auto max-w-xl">
           <UploadZone
             accept={GENERIC_UPLOAD_ACCEPT}
@@ -206,101 +214,106 @@ export function ConversionFlow() {
             subtitleLine={t.upload.genericSupportedTypesLine}
             onFiles={handleInitialFiles}
           />
-
-          {pickError && (
-            <Alert variant="danger" className="mt-4">
-              {pickError}
-            </Alert>
-          )}
         </div>
       )}
 
-      {isIdle && category && (
+      {isIdle && files.length > 0 && (
         <div className="animate-fade-in-up mx-auto mt-8 w-full max-w-2xl">
-          <div className="border-border bg-surface min-w-0 rounded-2xl border p-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <FileTypeIcon type={category} size={32} className="shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-small text-foreground truncate font-medium">
-                  {rawFiles[0]?.name}
-                </p>
-                <p className="text-muted hidden text-xs sm:block">{t.categories[category]}</p>
-              </div>
+          {oversizedFile ? (
+            <Alert variant="danger">{t.errors.fileTooLargeDetail(oversizedFile.name)}</Alert>
+          ) : category ? (
+            <FileBatchSummary
+              files={files}
+              fileType={category}
+              reorderable={!!selectedTool?.multiple && files.length > 1}
+              onRemoveFile={handleRemoveFile}
+              onMoveFile={handleMoveFile}
+              onClear={handleReset}
+            />
+          ) : (
+            <div className="border-border bg-surface min-w-0 rounded-2xl border p-4">
+              <p className="text-small text-foreground font-medium">
+                {t.batch.filesSelected(files.length)}
+              </p>
               <button
                 type="button"
-                className="focus-ring text-small text-muted hover:text-foreground hidden shrink-0 rounded font-medium sm:block"
+                className="focus-ring text-small text-muted hover:text-foreground mt-2 rounded font-medium"
                 onClick={handleReset}
               >
-                {t.upload.pickDifferentFile}
+                {t.batch.clearFiles}
               </button>
             </div>
+          )}
 
-            <div className="mt-2 flex items-center justify-between gap-3 sm:hidden">
-              <p className="text-muted truncate text-xs">{t.categories[category]}</p>
-              <button
-                type="button"
-                className="focus-ring text-small text-muted hover:text-foreground shrink-0 rounded font-medium"
-                onClick={handleReset}
-              >
-                {t.upload.pickDifferentFile}
-              </button>
-            </div>
-          </div>
-
-          {categoryTools.length === 0 ? (
-            <p className="text-small text-muted mt-6 text-center">{t.categories.emptyState}</p>
-          ) : workspaceMode && files[0] ? (
-            <div className="mt-8">
-              <PdfWorkspace
-                file={files[0]}
-                mode={workspaceMode}
-                onBack={handleWorkspaceBack}
-                onConfirm={handleWorkspaceConfirm}
+          {canAddMoreFiles && (
+            <div className="mt-4">
+              <UploadZone
+                accept={GENERIC_UPLOAD_ACCEPT}
+                multiple
+                compact
+                ariaLabel={t.batch.addMoreDropZoneAriaLabel}
+                subtitleLine={t.batch.addFiles}
+                onFiles={handleAddFiles}
               />
             </div>
-          ) : (
+          )}
+
+          {addFileNotice && (
+            <Alert variant="warning" className="mt-4">
+              {addFileNotice}
+            </Alert>
+          )}
+
+          {!oversizedFile && analysis.validationReason && (
+            <Alert variant="info" className="mt-6" title={t.batch.unsupportedFileSetTitle}>
+              {analysis.validationReason === 'mixed-types-unsupported' &&
+                t.batch.mixedFilesExplanation}
+              {analysis.validationReason === 'no-compatible-tool' && t.batch.noCompatibleToolBody}
+              {analysis.validationReason === 'unsupported-file-type' && t.errors.invalidFileType}
+            </Alert>
+          )}
+
+          {!oversizedFile && !analysis.validationReason && compatibleTools.length > 0 && (
             <>
-              <h2 className="text-foreground sm:text-h3 mt-8 text-center text-[30px] font-semibold leading-[1.1]">
-                {t.upload.chooseActionHeading}
-              </h2>
-              <div className="mt-4">
-                <ToolCards
-                  tools={categoryTools}
-                  selectedSlug={selectedTool?.slug ?? null}
-                  onSelect={handleToolSelect}
-                />
-              </div>
-
-              {selectedTool && (
-                <div className="mx-auto mt-6 max-w-xl">
-                  <SelectedFilesList
-                    files={files}
-                    reorderable={selectedTool.multiple && files.length > 1}
-                    onRemove={removeFile}
-                    onMove={moveFile}
+              {workspaceMode && files[0] ? (
+                <div className="mt-8">
+                  <PdfWorkspace
+                    file={files[0]}
+                    mode={workspaceMode}
+                    onBack={handleWorkspaceBack}
+                    onConfirm={handleWorkspaceConfirm}
                   />
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-foreground sm:text-h3 mt-8 text-center text-[30px] font-semibold leading-[1.1]">
+                    {t.upload.chooseActionHeading}
+                  </h2>
+                  <div className="mt-4">
+                    <ToolCards
+                      tools={compatibleTools}
+                      selectedSlug={selectedTool?.slug ?? null}
+                      recommendedSlug={recommendedSlug}
+                      onSelect={handleToolSelect}
+                    />
+                  </div>
 
-                  {needsMoreFiles && (
-                    <div className="mt-4">
-                      <UploadZone
-                        accept={selectedTool.accept}
-                        multiple
-                        compact
-                        ariaLabel={t.upload.mergeDropZoneAriaLabel}
-                        subtitleLine={t.upload.mergeHint}
-                        onFiles={handleAddMoreFiles}
+                  {selectedTool && (
+                    <div className="mx-auto mt-6 max-w-xl">
+                      <ParameterCard
+                        tool={selectedTool}
+                        values={fieldValues}
+                        onChange={updateField}
                       />
+
+                      <div className="mt-4 flex justify-center">
+                        <Button size="lg" disabled={!canStart} onClick={handleStart}>
+                          {t.buttons.start}
+                        </Button>
+                      </div>
                     </div>
                   )}
-
-                  <ParameterCard tool={selectedTool} values={fieldValues} onChange={updateField} />
-
-                  <div className="mt-4 flex justify-center">
-                    <Button size="lg" disabled={!canStart} onClick={handleStart}>
-                      {t.buttons.start}
-                    </Button>
-                  </div>
-                </div>
+                </>
               )}
             </>
           )}
