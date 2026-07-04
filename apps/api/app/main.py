@@ -61,7 +61,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_origin_regex=settings.cors_origin_regex,
-    allow_credentials=True,
+    # No cookie/session auth exists anywhere in this API (jobs are looked up
+    # by an unguessable id in the URL, not a session) — credentialed CORS
+    # isn't needed, and leaving it off is safer if CORS_ORIGIN_REGEX is ever
+    # widened, since browsers refuse to combine a broad/regex origin match
+    # with allow_credentials=True for a real credentialed request anyway.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
