@@ -1,6 +1,7 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 pydantic==2.10.2
+pydantic[email]==2.10.2
 pydantic-settings==2.6.1
 python-multipart==0.0.17
 PyMuPDF==1.24.13
@@ -11,3 +12,13 @@ xhtml2pdf==0.2.17
 reportlab==4.5.1
 openpyxl==3.1.5
 Pillow==12.3.0
+
+# Persistent operations/feedback storage (Supabase-hosted Postgres) — see
+# app/db/ and the "add persistent operations storage" commit.
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# Admin auth: verifies a Supabase Auth access token server-side via its
+# project JWKS endpoint — see app/services/admin_auth.py.
+PyJWT[crypto]==2.10.1

@@ -78,6 +78,49 @@ class Settings(BaseSettings):
     operations_events_max_count: int = 5000
     operations_events_retention_seconds: int = 7 * 24 * 60 * 60
 
+    # Which OperationsEventStore implementation to use — "memory" (default,
+    # safe for local dev/tests) or "postgres" (real persistence, requires
+    # DATABASE_URL). Explicit rather than inferred from whether
+    # DATABASE_URL happens to be set, so a misconfigured production
+    # deployment fails loudly instead of silently running on memory.
+    operations_store_backend: str = "memory"
+
+    # Backend-only Postgres connection string (Supabase-hosted or any other
+    # Postgres). NEVER exposed to the web app — see apps/web/.env.example,
+    # which has no equivalent variable.
+    database_url: str | None = None
+
+    # Supabase project URL, used server-side to fetch the project's JWKS
+    # for verifying Admin Panel access tokens (see app/services/admin_auth.py).
+    # The browser has its own copy via NEXT_PUBLIC_SUPABASE_URL — same
+    # value, different variable, since NEXT_PUBLIC_* and backend-only
+    # settings are read from separate .env files in this monorepo.
+    supabase_url: str | None = None
+    # Optional — only set if your Supabase project's access tokens carry a
+    # non-default `aud` claim you want strictly checked.
+    supabase_jwt_audience: str | None = None
+
+    # Backend-only allowlist of admin emails — the actual authorization
+    # boundary for every /api/v1/admin/* route. A valid Supabase session
+    # alone does not make a user an admin; their verified email must also
+    # appear here. Never exposed to the browser (no NEXT_PUBLIC_ equivalent).
+    admin_emails: str = ""
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(
+            email.strip().lower() for email in self.admin_emails.split(",") if email.strip()
+        )
+
+    # Separate rate-limit policy for the public feedback endpoint — kept
+    # independent of the conversion limiter's budget (see
+    # app/services/rate_limiter.py) so a burst of feedback submissions
+    # can't exhaust a client's conversion quota, or vice versa. Deliberately
+    # conservative: feedback is an occasional action, not a workflow.
+    feedback_rate_limit_enabled: bool = True
+    feedback_rate_limit_requests: int = 5
+    feedback_rate_limit_window_seconds: int = 600
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

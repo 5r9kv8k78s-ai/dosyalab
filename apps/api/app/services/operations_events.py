@@ -20,9 +20,9 @@ import logging
 import threading
 import time
 import uuid
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal, Protocol
 
 from app.core.config import get_settings
@@ -71,6 +71,53 @@ class OperationsEvent:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class OverviewMetrics:
+    """See `classify_input_family`'s neighbors for the precise definition
+    of each field — computed identically by every store implementation:
+
+    - conversion_attempts: every `event_type="conversion"` event, any status.
+    - successful_conversions / failed_conversions / validation_rejections:
+      conversion events with status success / failure / validation_rejected.
+    - rate_limit_rejections: every `event_type="rate_limit_rejection"` event.
+    - success_rate: successful_conversions / conversion_attempts, or 0.0 if
+      there were no attempts (never divides by zero).
+    - average_duration_ms: mean `duration_ms` over conversion events where
+      it's not null (success + failure; validation_rejected has no
+      duration since no conversion work ran).
+    - total_files_processed: sum of `file_count` over *successful*
+      conversions only — files that were actually converted, not merely
+      uploaded and rejected.
+    """
+
+    conversion_attempts: int
+    successful_conversions: int
+    failed_conversions: int
+    validation_rejections: int
+    rate_limit_rejections: int
+    success_rate: float
+    average_duration_ms: float | None
+    total_files_processed: int
+
+
+@dataclass(frozen=True)
+class DailyActivity:
+    day: date
+    attempts: int
+    successes: int
+    failures_or_rejections: int
+
+
+@dataclass(frozen=True)
+class ToolAggregation:
+    tool_slug: str
+    attempt_count: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+    average_duration_ms: float | None
+
+
 class OperationsEventStore(Protocol):
     """Abstraction the future Admin Panel API queries against — a
     persistent (e.g. Postgres-backed) implementation can replace
@@ -91,6 +138,11 @@ class OperationsEventStore(Protocol):
     def summarize_by_status(self) -> dict[str, int]: ...
     def summarize_by_tool(self) -> dict[str, int]: ...
     def summarize_by_error(self) -> dict[str, int]: ...
+
+    def get_overview(self, since: datetime) -> OverviewMetrics: ...
+    def get_daily_activity(self, since: datetime) -> list[DailyActivity]: ...
+    def get_tool_aggregation(self, since: datetime) -> list[ToolAggregation]: ...
+    def get_error_aggregation(self, since: datetime) -> list[tuple[str, int]]: ...
 
 
 class InMemoryOperationsEventStore:
@@ -162,6 +214,90 @@ class InMemoryOperationsEventStore:
         while len(self._events) > self._max_count:
             self._events.popleft()
 
+    def get_overview(self, since: datetime) -> OverviewMetrics:
+        with self._lock:
+            self._prune_locked()
+            events = [e for e in self._events if e.created_at >= since]
+
+        conversions = [e for e in events if e.event_type == "conversion"]
+        successes = [e for e in conversions if e.status == "success"]
+        failures = [e for e in conversions if e.status == "failure"]
+        rejections = [e for e in conversions if e.status == "validation_rejected"]
+        rate_limited = [e for e in events if e.event_type == "rate_limit_rejection"]
+        durations = [e.duration_ms for e in conversions if e.duration_ms is not None]
+
+        attempts = len(conversions)
+        return OverviewMetrics(
+            conversion_attempts=attempts,
+            successful_conversions=len(successes),
+            failed_conversions=len(failures),
+            validation_rejections=len(rejections),
+            rate_limit_rejections=len(rate_limited),
+            success_rate=(len(successes) / attempts) if attempts else 0.0,
+            average_duration_ms=(sum(durations) / len(durations)) if durations else None,
+            total_files_processed=sum(e.file_count for e in successes),
+        )
+
+    def get_daily_activity(self, since: datetime) -> list[DailyActivity]:
+        with self._lock:
+            self._prune_locked()
+            events = [
+                e for e in self._events if e.created_at >= since and e.event_type == "conversion"
+            ]
+
+        by_day: dict[date, dict[str, int]] = defaultdict(lambda: {"a": 0, "s": 0, "f": 0})
+        for event in events:
+            bucket = by_day[event.created_at.date()]
+            bucket["a"] += 1
+            if event.status == "success":
+                bucket["s"] += 1
+            else:
+                bucket["f"] += 1
+
+        return [
+            DailyActivity(day=day, attempts=v["a"], successes=v["s"], failures_or_rejections=v["f"])
+            for day, v in sorted(by_day.items())
+        ]
+
+    def get_tool_aggregation(self, since: datetime) -> list[ToolAggregation]:
+        with self._lock:
+            self._prune_locked()
+            events = [
+                e
+                for e in self._events
+                if e.created_at >= since and e.event_type == "conversion" and e.tool_slug
+            ]
+
+        by_tool: dict[str, list[OperationsEvent]] = defaultdict(list)
+        for event in events:
+            by_tool[event.tool_slug].append(event)  # type: ignore[index]
+
+        results = []
+        for slug, tool_events in by_tool.items():
+            successes = [e for e in tool_events if e.status == "success"]
+            failures = [e for e in tool_events if e.status == "failure"]
+            durations = [e.duration_ms for e in tool_events if e.duration_ms is not None]
+            attempts = len(tool_events)
+            results.append(
+                ToolAggregation(
+                    tool_slug=slug,
+                    attempt_count=attempts,
+                    success_count=len(successes),
+                    failure_count=len(failures),
+                    success_rate=(len(successes) / attempts) if attempts else 0.0,
+                    average_duration_ms=(sum(durations) / len(durations)) if durations else None,
+                )
+            )
+        return sorted(results, key=lambda r: r.attempt_count, reverse=True)
+
+    def get_error_aggregation(self, since: datetime) -> list[tuple[str, int]]:
+        with self._lock:
+            self._prune_locked()
+            events = [e for e in self._events if e.created_at >= since and e.error_code]
+
+        counts = Counter(e.error_code for e in events)
+        return sorted(counts.items(), key=lambda item: item[1], reverse=True)
+
 
 # Every tool's *input* family is fixed and known statically — mirrors the
 # frontend's `fileType` grouping (apps/web/lib/tools.ts) without importing
@@ -184,22 +320,255 @@ def classify_input_family(tool_slug: str | None) -> InputFamily:
     return "pdf"
 
 
-_store: InMemoryOperationsEventStore | None = None
+class PostgresOperationsEventStore:
+    """Persistent `OperationsEventStore` backed by the `operations_events`
+    table (see app/db/models.py, migrations/versions/0001_*). Selected via
+    `OPERATIONS_STORE_BACKEND=postgres` — this is the real production
+    implementation; `InMemoryOperationsEventStore` above remains for local
+    dev/tests or an explicit fallback, never a silent substitute.
+    """
+
+    def __init__(self) -> None:
+        # Eagerly resolve the engine at store construction (raises
+        # `DatabaseNotConfiguredError` immediately if DATABASE_URL is
+        # missing) rather than only on the first record/query call.
+        from app.db.session import get_engine
+
+        get_engine()
+
+    def record(
+        self,
+        *,
+        event_type: EventType,
+        tool_slug: str | None,
+        status: EventStatus,
+        file_count: int,
+        input_family: InputFamily,
+        duration_ms: int | None,
+        error_code: ErrorCode | None,
+    ) -> None:
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        with session_scope() as session:
+            session.add(
+                OperationsEventRow(
+                    event_id=uuid.uuid4().hex,
+                    event_type=event_type,
+                    tool_slug=tool_slug,
+                    status=status,
+                    file_count=file_count,
+                    input_family=input_family,
+                    duration_ms=duration_ms,
+                    error_code=error_code,
+                    created_at=datetime.now(UTC),
+                )
+            )
+
+    def summarize_by_status(self) -> dict[str, int]:
+        from sqlalchemy import func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        with session_scope() as session:
+            rows = session.execute(
+                select(OperationsEventRow.status, func.count()).group_by(
+                    OperationsEventRow.status
+                )
+            ).all()
+        return {status: count for status, count in rows}
+
+    def summarize_by_tool(self) -> dict[str, int]:
+        from sqlalchemy import func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        with session_scope() as session:
+            rows = session.execute(
+                select(OperationsEventRow.tool_slug, func.count())
+                .where(OperationsEventRow.tool_slug.is_not(None))
+                .group_by(OperationsEventRow.tool_slug)
+            ).all()
+        return {slug: count for slug, count in rows}
+
+    def summarize_by_error(self) -> dict[str, int]:
+        from sqlalchemy import func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        with session_scope() as session:
+            rows = session.execute(
+                select(OperationsEventRow.error_code, func.count())
+                .where(OperationsEventRow.error_code.is_not(None))
+                .group_by(OperationsEventRow.error_code)
+            ).all()
+        return {code: count for code, count in rows}
+
+    def get_overview(self, since: datetime) -> OverviewMetrics:
+        from sqlalchemy import func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        row = OperationsEventRow
+        with session_scope() as session:
+            conversions = select(row).where(row.created_at >= since, row.event_type == "conversion")
+            attempts = session.scalar(
+                select(func.count()).select_from(conversions.subquery())
+            ) or 0
+            successes = session.scalar(
+                select(func.count()).select_from(
+                    conversions.where(row.status == "success").subquery()
+                )
+            ) or 0
+            failures = session.scalar(
+                select(func.count()).select_from(
+                    conversions.where(row.status == "failure").subquery()
+                )
+            ) or 0
+            rejections = session.scalar(
+                select(func.count()).select_from(
+                    conversions.where(row.status == "validation_rejected").subquery()
+                )
+            ) or 0
+            rate_limited = session.scalar(
+                select(func.count()).where(
+                    row.created_at >= since, row.event_type == "rate_limit_rejection"
+                )
+            ) or 0
+            avg_duration = session.scalar(
+                select(func.avg(row.duration_ms)).select_from(
+                    conversions.where(row.duration_ms.is_not(None)).subquery()
+                )
+            )
+            total_files = session.scalar(
+                select(func.coalesce(func.sum(row.file_count), 0)).select_from(
+                    conversions.where(row.status == "success").subquery()
+                )
+            ) or 0
+
+        return OverviewMetrics(
+            conversion_attempts=attempts,
+            successful_conversions=successes,
+            failed_conversions=failures,
+            validation_rejections=rejections,
+            rate_limit_rejections=rate_limited,
+            success_rate=(successes / attempts) if attempts else 0.0,
+            average_duration_ms=float(avg_duration) if avg_duration is not None else None,
+            total_files_processed=int(total_files),
+        )
+
+    def get_daily_activity(self, since: datetime) -> list[DailyActivity]:
+        from sqlalchemy import case, func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        row = OperationsEventRow
+        day_col = func.date(row.created_at)
+        with session_scope() as session:
+            rows = session.execute(
+                select(
+                    day_col.label("day"),
+                    func.count().label("attempts"),
+                    func.sum(case((row.status == "success", 1), else_=0)).label("successes"),
+                    func.sum(case((row.status != "success", 1), else_=0)).label("failures"),
+                )
+                .where(row.created_at >= since, row.event_type == "conversion")
+                .group_by(day_col)
+                .order_by(day_col)
+            ).all()
+
+        return [
+            DailyActivity(
+                day=r.day if isinstance(r.day, date) else datetime.fromisoformat(str(r.day)).date(),
+                attempts=r.attempts,
+                successes=r.successes,
+                failures_or_rejections=r.failures,
+            )
+            for r in rows
+        ]
+
+    def get_tool_aggregation(self, since: datetime) -> list[ToolAggregation]:
+        from sqlalchemy import case, func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        row = OperationsEventRow
+        with session_scope() as session:
+            rows = session.execute(
+                select(
+                    row.tool_slug,
+                    func.count().label("attempts"),
+                    func.sum(case((row.status == "success", 1), else_=0)).label("successes"),
+                    func.sum(case((row.status == "failure", 1), else_=0)).label("failures"),
+                    func.avg(row.duration_ms).label("avg_duration"),
+                )
+                .where(row.created_at >= since, row.event_type == "conversion", row.tool_slug.is_not(None))
+                .group_by(row.tool_slug)
+                .order_by(func.count().desc())
+            ).all()
+
+        results = []
+        for r in rows:
+            attempts = r.attempts or 0
+            successes = r.successes or 0
+            results.append(
+                ToolAggregation(
+                    tool_slug=r.tool_slug,
+                    attempt_count=attempts,
+                    success_count=successes,
+                    failure_count=r.failures or 0,
+                    success_rate=(successes / attempts) if attempts else 0.0,
+                    average_duration_ms=float(r.avg_duration) if r.avg_duration is not None else None,
+                )
+            )
+        return results
+
+    def get_error_aggregation(self, since: datetime) -> list[tuple[str, int]]:
+        from sqlalchemy import func, select
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        row = OperationsEventRow
+        with session_scope() as session:
+            rows = session.execute(
+                select(row.error_code, func.count())
+                .where(row.created_at >= since, row.error_code.is_not(None))
+                .group_by(row.error_code)
+                .order_by(func.count().desc())
+            ).all()
+        return [(code, count) for code, count in rows]
+
+
+_store: OperationsEventStore | None = None
 _store_lock = threading.Lock()
 
 
-def get_operations_event_store() -> InMemoryOperationsEventStore:
-    """Lazily builds the process-wide singleton from current settings —
-    mirrors `app.services.jobs.job_store`'s module-level-singleton pattern."""
+def get_operations_event_store() -> OperationsEventStore:
+    """Lazily builds the process-wide singleton, honoring
+    `OPERATIONS_STORE_BACKEND`. "postgres" requires `DATABASE_URL` — see
+    `app.db.session.get_engine`, which raises `DatabaseNotConfiguredError`
+    rather than silently falling back to memory if it's missing. Mirrors
+    `app.services.jobs.job_store`'s module-level-singleton pattern.
+    """
     global _store
     if _store is None:
         with _store_lock:
             if _store is None:
                 settings = get_settings()
-                _store = InMemoryOperationsEventStore(
-                    max_count=settings.operations_events_max_count,
-                    retention_seconds=settings.operations_events_retention_seconds,
-                )
+                if settings.operations_store_backend == "postgres":
+                    _store = PostgresOperationsEventStore()
+                else:
+                    _store = InMemoryOperationsEventStore(
+                        max_count=settings.operations_events_max_count,
+                        retention_seconds=settings.operations_events_retention_seconds,
+                    )
     return _store
 
 
