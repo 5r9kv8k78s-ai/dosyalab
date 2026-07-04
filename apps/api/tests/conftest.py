@@ -118,6 +118,13 @@ def test_settings(tmp_path: Path) -> Settings:
         upload_dir=tmp_path / "uploads",
         convert_upload_dir=tmp_path / "convert" / "uploads",
         convert_output_dir=tmp_path / "convert" / "outputs",
+        # The conversion rate limiter (app/services/rate_limiter.py) keys on
+        # the TestClient's fake client host, which is identical across every
+        # test in the suite — without this, dozens of unrelated conversion
+        # tests sharing that one key within the same 60s window would start
+        # tripping 429s on each other. Rate-limit behavior itself is tested
+        # separately in test_rate_limit_endpoint.py with its own Settings.
+        rate_limit_enabled=False,
     )
 
 
