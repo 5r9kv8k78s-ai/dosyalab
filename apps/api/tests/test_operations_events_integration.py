@@ -6,32 +6,20 @@ store as a module-level singleton, so each test resets it first.
 
 import io
 
-import pytest
-
 import app.services.operations_events as operations_events_module
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 
+# Every test in the suite is pinned to the in-memory backend by the
+# autouse `_force_memory_operations_store` fixture in conftest.py, which
+# also resets the store singleton before/after each test — the manual
+# `_reset_store()` calls below are just this file's own belt-and-suspenders
+# reset before each request, kept for clarity of intent per test.
+
 
 def _reset_store() -> None:
     operations_events_module._store = None
-
-
-@pytest.fixture(autouse=True)
-def _force_memory_operations_store(monkeypatch: pytest.MonkeyPatch) -> None:
-    """These tests assert on the in-memory store's internals (`_events`,
-    `_lock`, `summarize_by_tool()`), which the Postgres implementation
-    doesn't have. `get_operations_event_store()` picks its backend by
-    calling the real, process-wide `get_settings()` directly — not through
-    `app.dependency_overrides`, which only affects the endpoint's own
-    injected `Settings` — so whatever `OPERATIONS_STORE_BACKEND` happens to
-    be set to in the local `.env` (e.g. `postgres`, for real-database manual
-    testing) would otherwise leak into these tests. Patching the module's
-    `get_settings` reference pins the backend to memory regardless.
-    """
-    memory_settings = Settings(operations_store_backend="memory")
-    monkeypatch.setattr(operations_events_module, "get_settings", lambda: memory_settings)
 
 
 def test_successful_conversion_records_a_success_event(
@@ -117,3 +105,18 @@ def test_operations_events_disabled_setting_records_nothing(
     # short-circuited before ever touching the store.
     store = operations_events_module.get_operations_event_store()
     assert store.summarize_by_status() == {}
+
+
+def test_operations_store_never_backed_by_postgres_during_tests() -> None:
+    """Regression test for the exact leak the autouse `_force_memory_
+    operations_store` fixture (conftest.py) exists to close: a local
+    `apps/api/.env` with `OPERATIONS_STORE_BACKEND=postgres` — set for
+    manual/production-mirroring runs against real Supabase — must never
+    cause a test run to build a Postgres-backed store and write real rows
+    into that table. This must hold regardless of the current local `.env`
+    value, so it doesn't itself depend on `.env` being one way or another.
+    """
+    _reset_store()
+    store = operations_events_module.get_operations_event_store()
+    assert isinstance(store, operations_events_module.InMemoryOperationsEventStore)
+    assert operations_events_module.get_settings().operations_store_backend == "memory"

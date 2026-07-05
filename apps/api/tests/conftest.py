@@ -5,6 +5,7 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
+import app.services.operations_events as operations_events_module
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.services.jobs import job_store
@@ -150,3 +151,26 @@ def _clear_job_store() -> Iterator[None]:
     yield
     for job in job_store.all_jobs():
         job_store.delete(job.id)
+
+
+@pytest.fixture(autouse=True)
+def _force_memory_operations_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No test — in this file or any other — should ever write to the real,
+    possibly-Postgres-backed operations_events table. `get_operations_event_
+    store()` (see app/services/operations_events.py) picks its backend by
+    calling the real, process-wide `get_settings()` directly, not through
+    `app.dependency_overrides` — that mechanism only covers each endpoint's
+    own injected `Settings` parameter, so a local `apps/api/.env` with
+    `OPERATIONS_STORE_BACKEND=postgres` (set for manual/production-mirroring
+    runs, e.g. real E2E verification against Supabase) would otherwise leak
+    into every test that exercises a real conversion/rate-limit endpoint.
+    Patching the module's own `get_settings` reference — the single call
+    site that actually decides the backend — pins every test to memory
+    regardless of local env, without touching the real get_settings() that
+    production (and this same module, outside of tests) still uses.
+    """
+    memory_settings = Settings(operations_store_backend="memory")
+    monkeypatch.setattr(operations_events_module, "get_settings", lambda: memory_settings)
+    operations_events_module._store = None
+    yield
+    operations_events_module._store = None
