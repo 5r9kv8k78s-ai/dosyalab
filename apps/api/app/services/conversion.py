@@ -969,8 +969,37 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         if converter is None:
             raise RuntimeError(f"No converter registered for slug '{job.module_slug}'")
 
-        output_path = await asyncio.to_thread(
-            converter.convert, job.source_path, settings.convert_output_dir
+        # Diagnostic-only instrumentation: pins down whether a stuck job is
+        # actually waiting on this specific call (never logs CONVERT_RETURNED/
+        # CONVERT_RAISED) versus something elsewhere in this function — no
+        # filename, path, or other user data, just the job/tool identifiers
+        # already used by the surrounding logger.info calls.
+        convert_started_at = time.monotonic()
+        logger.info(
+            "convert.convert_started",
+            extra={"job_id": job_id, "tool_slug": job.module_slug},
+        )
+        try:
+            output_path = await asyncio.to_thread(
+                converter.convert, job.source_path, settings.convert_output_dir
+            )
+        except Exception:
+            logger.exception(
+                "convert.convert_raised",
+                extra={
+                    "job_id": job_id,
+                    "tool_slug": job.module_slug,
+                    "elapsed_ms": int((time.monotonic() - convert_started_at) * 1000),
+                },
+            )
+            raise
+        logger.info(
+            "convert.convert_returned",
+            extra={
+                "job_id": job_id,
+                "tool_slug": job.module_slug,
+                "elapsed_ms": int((time.monotonic() - convert_started_at) * 1000),
+            },
         )
         job_store.update(job_id, status=JobStatus.COMPLETED, progress=100, output_path=output_path)
         logger.info("convert.job_completed", extra={"job_id": job_id})
