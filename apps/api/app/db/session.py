@@ -28,6 +28,21 @@ _engine_lock = threading.Lock()
 _session_factory: sessionmaker[Session] | None = None
 
 
+def _with_psycopg_driver(database_url: str) -> str:
+    """This project depends on `psycopg` (v3, see requirements.txt) rather
+    than `psycopg2` — but a bare `postgresql://`/`postgres://` URL (e.g.
+    pasted directly from Supabase's "Connection string (URI)" dashboard
+    field, which never includes a driver suffix) makes SQLAlchemy default
+    to the psycopg2 dialect regardless, which isn't installed. Force the
+    psycopg3 dialect explicitly so the driver actually used matches the
+    one actually installed, no matter how the URL was written."""
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url[len("postgresql://") :]
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg://" + database_url[len("postgres://") :]
+    return database_url
+
+
 def get_engine() -> Engine:
     global _engine
     if _engine is None:
@@ -38,7 +53,8 @@ def get_engine() -> Engine:
                     raise DatabaseNotConfiguredError(
                         "DATABASE_URL is required when OPERATIONS_STORE_BACKEND=postgres."
                     )
-                _engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+                url = _with_psycopg_driver(settings.database_url)
+                _engine = create_engine(url, pool_pre_ping=True, future=True)
     return _engine
 
 
