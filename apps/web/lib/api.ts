@@ -315,8 +315,11 @@ export function submitToolConversion(
   });
 }
 
-export async function getConversionStatus(jobId: string): Promise<ConvertJobStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}`);
+export async function getConversionStatus(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<ConvertJobStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/convert/jobs/${jobId}`, { signal });
   if (!response.ok) {
     throw new ApiError(currentTranslations().errors.jobNotFound, response.status);
   }
