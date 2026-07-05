@@ -30,10 +30,20 @@ def _tiny_limit_settings(tmp_path, max_requests: int) -> Settings:
     )
 
 
+_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
 def _post_pdf_to_docx(client: TestClient, sample_pdf_bytes: bytes):
     return client.post(
         "/api/v1/convert/pdf-to-docx",
         files=[("file", ("doc.pdf", io.BytesIO(sample_pdf_bytes), "application/pdf"))],
+    )
+
+
+def _post_docx_to_pdf(client: TestClient, sample_docx_bytes: bytes):
+    return client.post(
+        "/api/v1/convert/docx-to-pdf",
+        files=[("file", ("doc.docx", io.BytesIO(sample_docx_bytes), _DOCX_CONTENT_TYPE))],
     )
 
 
@@ -51,41 +61,44 @@ def test_requests_below_threshold_are_not_rate_limited(tmp_path, sample_pdf_byte
         rate_limiter_module._conversion_limiter = None
 
 
-class _InstantPdfToDocxConverter(ConversionModule):
+class _InstantDocxToPdfConverter(ConversionModule):
     """Stand-in for the real converter so the background conversion job
     (which `TestClient` runs synchronously inside `client.post`) finishes
-    instantly instead of taking ~27s. The real converter's runtime otherwise
-    pushes sequential requests in this test past the 60s rate-limit window,
-    making the threshold assertion flaky — this keeps the request/response
-    cycle and rate-limiter behavior untouched while skipping the actual
-    document conversion work.
+    instantly. Rate-limit tests only exercise docx-to-pdf, never
+    pdf-to-docx: pdf-to-docx runs its real conversion in an isolated OS
+    subprocess (see app/services/conversion.py's
+    `_convert_pdf_to_docx_isolated`), which always imports the real
+    `PdfToDocxConverter` itself and is unaffected by an in-process
+    `get_converter` monkeypatch — docx-to-pdf has no such subprocess
+    isolation, so this stub still takes effect and keeps sequential
+    requests well inside the 60s rate-limit window.
     """
 
-    slug = "pdf-to-docx"
-    input_formats = ("pdf",)
-    output_format = "docx"
+    slug = "docx-to-pdf"
+    input_formats = ("docx",)
+    output_format = "pdf"
 
     def convert(self, source_path: Path, destination_dir: Path) -> Path:
         destination_dir.mkdir(parents=True, exist_ok=True)
-        output_path = destination_dir / f"{source_path.stem}.docx"
-        output_path.write_bytes(b"stub docx output")
+        output_path = destination_dir / f"{source_path.stem}.pdf"
+        output_path.write_bytes(b"stub pdf output")
         return output_path
 
 
 def test_returns_429_with_retry_after_above_threshold(
-    tmp_path, sample_pdf_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+    tmp_path, sample_docx_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        conversion_module, "get_converter", lambda slug: _InstantPdfToDocxConverter()
+        conversion_module, "get_converter", lambda slug: _InstantDocxToPdfConverter()
     )
     rate_limiter_module._conversion_limiter = None
     settings = _tiny_limit_settings(tmp_path, max_requests=2)
     app.dependency_overrides[get_settings] = lambda: settings
     try:
         with TestClient(app) as client:
-            assert _post_pdf_to_docx(client, sample_pdf_bytes).status_code == 202
-            assert _post_pdf_to_docx(client, sample_pdf_bytes).status_code == 202
-            blocked = _post_pdf_to_docx(client, sample_pdf_bytes)
+            assert _post_docx_to_pdf(client, sample_docx_bytes).status_code == 202
+            assert _post_docx_to_pdf(client, sample_docx_bytes).status_code == 202
+            blocked = _post_docx_to_pdf(client, sample_docx_bytes)
     finally:
         app.dependency_overrides.pop(get_settings, None)
         rate_limiter_module._conversion_limiter = None

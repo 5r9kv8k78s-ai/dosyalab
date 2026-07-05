@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import shutil
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -976,6 +977,132 @@ def _pdf_complexity_metrics(source_path: Path) -> dict[str, int]:
     }
 
 
+# Grace period between asking a stuck conversion process to exit (terminate,
+# i.e. SIGTERM) and giving up on that and forcing it (kill, i.e. SIGKILL).
+# Not user-configurable — this is an internal implementation detail of how
+# long we're willing to wait for a clean shutdown, not a policy knob.
+_TERMINATE_GRACE_PERIOD_SECONDS = 5
+
+
+class ConversionSubprocessError(Exception):
+    """A conversion subprocess (see `_run_worker_subprocess`) exited with a
+    non-zero code, or was killed after exceeding its timeout."""
+
+
+async def _run_worker_subprocess(
+    args: list[str],
+    *,
+    timeout_seconds: float,
+    job_id: str,
+    tool_slug: str,
+) -> str:
+    """Runs `args` (already including the interpreter — never with a shell)
+    as a real OS subprocess, enforcing a hard timeout. Unlike a worker
+    thread (`asyncio.to_thread`), a process that exceeds `timeout_seconds`
+    is genuinely terminated — or killed, if it ignores that — and reaped;
+    it is never left running in the background consuming CPU/memory or
+    occupying a shared thread pool slot other conversions need.
+
+    Returns the subprocess's stdout, decoded and stripped, on a zero exit
+    code. Raises `ConversionSubprocessError` for a non-zero exit code or a
+    timeout — in the timeout case, only after the process has actually
+    been terminated/killed and reaped.
+    """
+    started_at = time.monotonic()
+    logger.info(
+        "convert.process_started",
+        extra={"job_id": job_id, "tool_slug": tool_slug, "timeout_seconds": timeout_seconds},
+    )
+
+    process = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        # Never captured/logged/surfaced — a worker's traceback could
+        # incidentally include the source file path, which must never
+        # reach any log or the user. The exit code is the only signal
+        # the parent needs to detect failure.
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+
+    try:
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+    except TimeoutError:
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        logger.warning(
+            "convert.process_timeout",
+            extra={
+                "job_id": job_id,
+                "tool_slug": tool_slug,
+                "elapsed_ms": elapsed_ms,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        await _terminate_then_kill(process, job_id=job_id, tool_slug=tool_slug)
+        raise ConversionSubprocessError(
+            f"Conversion subprocess exceeded {timeout_seconds}s timeout."
+        ) from None
+
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    logger.info(
+        "convert.process_completed",
+        extra={
+            "job_id": job_id,
+            "tool_slug": tool_slug,
+            "elapsed_ms": elapsed_ms,
+            "exit_code": process.returncode,
+        },
+    )
+    if process.returncode != 0:
+        raise ConversionSubprocessError(
+            f"Conversion subprocess exited with code {process.returncode}."
+        )
+    return stdout.decode().strip()
+
+
+async def _terminate_then_kill(
+    process: asyncio.subprocess.Process, *, job_id: str, tool_slug: str
+) -> None:
+    """Asks `process` to exit, escalating to a forced kill — and reaping it
+    either way — if it doesn't within the grace period."""
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_PERIOD_SECONDS)
+        logger.warning(
+            "convert.process_terminated",
+            extra={"job_id": job_id, "tool_slug": tool_slug, "termination_method": "terminate"},
+        )
+    except TimeoutError:
+        process.kill()
+        await process.wait()  # reap — must not leave a zombie process behind
+        logger.warning(
+            "convert.process_killed",
+            extra={"job_id": job_id, "tool_slug": tool_slug, "termination_method": "kill"},
+        )
+
+
+async def _convert_pdf_to_docx_isolated(
+    job_id: str, source_path: Path, destination_dir: Path, timeout_seconds: float
+) -> Path:
+    """Runs the real `PdfToDocxConverter` (non-RGB image compatibility fix
+    included, since this imports and uses the exact same module) in its own
+    process — see `pdf_to_docx_worker.py`. Only pdf-to-docx uses process
+    isolation; every other converter still runs via `asyncio.to_thread`
+    below."""
+    stdout_text = await _run_worker_subprocess(
+        [
+            sys.executable,
+            "-m",
+            "app.services.pdf_to_docx_worker",
+            str(source_path),
+            str(destination_dir),
+        ],
+        timeout_seconds=timeout_seconds,
+        job_id=job_id,
+        tool_slug=PDF_TO_DOCX_SLUG,
+    )
+    return Path(stdout_text)
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking
     progress — and the one shared point every tool's actual conversion
@@ -1023,9 +1150,20 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
                 )
         logger.info("convert.convert_started", extra=log_extra)
         try:
-            output_path = await asyncio.to_thread(
-                converter.convert, job.source_path, settings.convert_output_dir
-            )
+            if job.module_slug == PDF_TO_DOCX_SLUG:
+                # Killable process isolation + hard timeout — see
+                # _convert_pdf_to_docx_isolated. Every other converter still
+                # runs via the plain worker-thread path below, unchanged.
+                output_path = await _convert_pdf_to_docx_isolated(
+                    job_id,
+                    job.source_path,
+                    settings.convert_output_dir,
+                    settings.pdf_to_docx_conversion_timeout_seconds,
+                )
+            else:
+                output_path = await asyncio.to_thread(
+                    converter.convert, job.source_path, settings.convert_output_dir
+                )
         except Exception:
             logger.exception(
                 "convert.convert_raised",

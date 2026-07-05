@@ -69,10 +69,14 @@ def _make_real_pdf_job(tmp_path):
 
 @pytest.mark.asyncio
 async def test_convert_started_and_returned_logged_on_success(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, caplog: pytest.LogCaptureFixture
+    tmp_path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setattr(conversion_module, "get_converter", lambda slug: _InstantConverter())
-    job = _make_job(tmp_path)
+    # pdf-to-docx now runs in its own subprocess (see conversion.py's
+    # _convert_pdf_to_docx_isolated) — the child process always imports and
+    # runs the real PdfToDocxConverter itself, so it never sees an
+    # in-process get_converter monkeypatch the way other tools' tests still
+    # can. A real, valid PDF is what actually exercises the success path.
+    job = _make_real_pdf_job(tmp_path)
     settings = Settings(convert_output_dir=tmp_path / "outputs")
 
     with caplog.at_level(logging.INFO, logger="app.services.conversion"):
@@ -156,10 +160,21 @@ async def test_convert_started_includes_complexity_metrics_for_pdf_to_docx(
 async def test_complexity_metrics_failure_is_fail_open(
     monkeypatch: pytest.MonkeyPatch, tmp_path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # _make_job's source.pdf is deliberately not a real PDF, so PyMuPDF
-    # fails to open it inside _pdf_complexity_metrics.
-    monkeypatch.setattr(conversion_module, "get_converter", lambda slug: _InstantConverter())
-    job = _make_job(tmp_path)
+    """This test's purpose is the metrics *extraction* failing open, not a
+    converter failure — so it uses a real, valid PDF (the actual subprocess
+    conversion must genuinely succeed) and instead makes
+    _pdf_complexity_metrics itself raise. That function runs in the parent
+    process, before the pdf-to-docx subprocess is even spawned (see
+    run_conversion_job), so — unlike get_converter — patching it here is
+    unaffected by process isolation and still takes effect exactly as
+    before.
+    """
+    monkeypatch.setattr(
+        conversion_module,
+        "_pdf_complexity_metrics",
+        MagicMock(side_effect=RuntimeError("simulated metrics extraction failure")),
+    )
+    job = _make_real_pdf_job(tmp_path)
     settings = Settings(convert_output_dir=tmp_path / "outputs")
 
     with caplog.at_level(logging.INFO, logger="app.services.conversion"):
@@ -180,6 +195,12 @@ async def test_complexity_metrics_failure_is_fail_open(
     updated_job = job_store.get(job.id)
     assert updated_job is not None
     assert updated_job.status == JobStatus.COMPLETED
+
+    forbidden = (str(job.source_path), job.source_path.name, job.download_filename)
+    for record in caplog.records:
+        rendered = record.getMessage() + " " + " ".join(str(v) for v in vars(record).values())
+        for value in forbidden:
+            assert value not in rendered
 
 
 @pytest.mark.asyncio

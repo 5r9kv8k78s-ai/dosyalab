@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     job_ttl_minutes: int = 60
     cleanup_interval_minutes: int = 10
 
+    # Hard ceiling for a single pdf-to-docx conversion, run in its own
+    # killable OS process (see app/services/conversion.py's
+    # `_run_worker_subprocess`) rather than a plain worker thread — some
+    # real-world PDFs make pdf2docx's layout/table reconstruction take an
+    # unbounded amount of time, and only a real process can be forcibly
+    # terminated if that happens. Not enforced for other converters.
+    pdf_to_docx_conversion_timeout_seconds: int = 120
+
     # Public-production abuse protection for the conversion/upload surface
     # (see app/services/rate_limiter.py) — a process-local fixed-window
     # limiter, since no shared datastore (Redis, etc.) exists in this
