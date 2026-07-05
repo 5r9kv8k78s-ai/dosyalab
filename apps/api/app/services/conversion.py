@@ -6,6 +6,7 @@ import time
 import uuid
 from pathlib import Path
 
+import fitz
 from fastapi import UploadFile
 
 from app.core.config import Settings
@@ -947,6 +948,34 @@ async def submit_extract_text_job(
     return job
 
 
+def _pdf_complexity_metrics(source_path: Path) -> dict[str, int]:
+    """Best-effort, privacy-safe structural metadata for a PDF, computed
+    just before a pdf-to-docx conversion starts — used only to diagnose why
+    some PDF→Word jobs hang in production (stuck in PROCESSING) while others
+    complete normally (see the `convert.convert_started` log below).
+
+    Raises on any PyMuPDF failure — callers must treat that as "metadata
+    unavailable" and let the conversion proceed regardless; this must never
+    gate, delay, or otherwise change conversion behavior.
+    """
+    total_images = 0
+    total_drawings = 0
+    text_char_count = 0
+    with fitz.open(source_path) as doc:
+        page_count = doc.page_count
+        for page in doc:
+            total_images += len(page.get_images(full=True))
+            total_drawings += len(page.get_drawings())
+            text_char_count += len(page.get_text("text"))
+    return {
+        "page_count": page_count,
+        "file_size_bytes": source_path.stat().st_size,
+        "total_images": total_images,
+        "total_drawings": total_drawings,
+        "text_char_count": text_char_count,
+    }
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking
     progress — and the one shared point every tool's actual conversion
@@ -975,10 +1004,24 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         # filename, path, or other user data, just the job/tool identifiers
         # already used by the surrounding logger.info calls.
         convert_started_at = time.monotonic()
-        logger.info(
-            "convert.convert_started",
-            extra={"job_id": job_id, "tool_slug": job.module_slug},
-        )
+        log_extra: dict[str, object] = {"job_id": job_id, "tool_slug": job.module_slug}
+        if job.module_slug == PDF_TO_DOCX_SLUG:
+            # Structural complexity metrics — only for pdf-to-docx, the tool
+            # actually seen hanging in production — to compare a stuck job's
+            # source PDF against a successful one's. Fail-open: a metrics
+            # failure only skips these fields, it never affects conversion.
+            try:
+                log_extra.update(_pdf_complexity_metrics(job.source_path))
+            except Exception as exc:
+                logger.warning(
+                    "convert.complexity_metrics_failed",
+                    extra={
+                        "job_id": job_id,
+                        "tool_slug": job.module_slug,
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+        logger.info("convert.convert_started", extra=log_extra)
         try:
             output_path = await asyncio.to_thread(
                 converter.convert, job.source_path, settings.convert_output_dir
