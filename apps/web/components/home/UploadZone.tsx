@@ -41,19 +41,19 @@ export function UploadZone({
       onFiles={onFiles}
       aria-label={ariaLabel}
       className={cn(
-        'from-surface to-primary/5 hover:border-primary rounded-upload hover:shadow-premium w-full max-w-full border-2 border-dashed bg-gradient-to-br px-5 py-7 transition-all duration-200 hover:scale-[1.01] sm:px-4 sm:py-8',
-        compact ? 'min-h-[160px]' : 'min-h-[230px] sm:min-h-[320px]',
+        'from-surface to-primary/5 hover:border-primary rounded-upload hover:shadow-premium w-full max-w-full border-2 border-dashed bg-gradient-to-br px-5 py-5 transition-all duration-200 hover:scale-[1.01] sm:px-4 sm:py-8',
+        compact ? 'min-h-[140px]' : 'min-h-[190px] sm:min-h-[320px]',
       )}
     >
       <UploadCloud
-        className={cn('text-primary mb-4', compact ? 'h-9 w-9' : 'h-12 w-12')}
+        className={cn('text-primary mb-3 sm:mb-4', compact ? 'h-8 w-8' : 'h-10 w-10 sm:h-12 sm:w-12')}
         aria-hidden="true"
       />
       <p className="text-cardTitle text-foreground font-semibold">{t.upload.dropHere}</p>
       <p className="text-small text-muted mt-1">
         {t.upload.or} <span className="text-primary font-medium">{t.upload.chooseFile}</span>
       </p>
-      <p className="text-small text-muted mt-4">{subtitleLine}</p>
+      <p className="text-small text-muted mt-3 sm:mt-4">{subtitleLine}</p>
       <p className="text-muted mt-1 text-xs">{t.upload.maxSizeLabel}</p>
     </Dropzone>
   );

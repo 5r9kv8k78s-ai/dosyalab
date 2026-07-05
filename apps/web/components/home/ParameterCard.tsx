@@ -18,7 +18,7 @@ export function ParameterCard({
   if (tool.fields.length === 0) return null;
 
   return (
-    <div className="border-border bg-surface animate-fade-in-up mt-4 space-y-4 rounded-2xl border p-6 shadow-sm">
+    <div className="border-border bg-surface animate-fade-in-up mt-4 space-y-3 rounded-2xl border p-4 shadow-sm sm:space-y-4 sm:p-6">
       {tool.fields.map((field) => {
         const fieldText = t.toolFields[toolFieldKey(tool.slug, field.name)];
         return (

@@ -30,7 +30,7 @@ export function ToolCards({
     <div
       role="radiogroup"
       aria-label={t.toolChips.ariaLabel}
-      className="animate-fade-in-up grid grid-cols-1 gap-3 sm:grid-cols-2"
+      className="animate-fade-in-up grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3"
     >
       {tools.map((tool) => {
         const isActive = tool.slug === selectedSlug;
@@ -43,7 +43,7 @@ export function ToolCards({
             aria-checked={isActive}
             onClick={() => onSelect(tool)}
             className={cn(
-              'focus-ring duration-base hover:shadow-premium relative rounded-2xl border p-5 text-left transition-all hover:-translate-y-[3px]',
+              'focus-ring duration-base hover:shadow-premium relative rounded-2xl border p-4 text-left transition-all hover:-translate-y-[3px] sm:p-5',
               isActive || isRecommended
                 ? 'border-primary bg-primary/[0.08]'
                 : 'border-border bg-surface',

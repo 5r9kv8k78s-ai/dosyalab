@@ -88,18 +88,46 @@ export function ConversionFlow() {
     [files],
   );
 
+  // Set by handleToolSelect when a card tap should start the conversion the
+  // moment its tool becomes selected — see that function for why this can't
+  // just call `start()` directly.
+  const pendingAutoStartRef = useRef(false);
+
+  // A synchronous double-submit guard for handleToolSelect. `state.stage` is
+  // React state — it only reflects a `start()` call after the next render,
+  // so several click events dispatched within the same tick (a real rapid
+  // double/triple-tap can do this) would all still read `state.stage as
+  // 'idle'` and all call `start()`. This ref updates immediately, before
+  // React re-renders, so the second of two same-tick taps sees it and bails.
+  const submitGuardRef = useRef(false);
+  useEffect(() => {
+    submitGuardRef.current = false;
+  }, [state.stage]);
+
   // Resets the parameter form (and any stale conversion state) whenever the
   // *effective* tool changes — whether from a manual click or an automatic
-  // re-analysis fallback — but not on every render.
+  // re-analysis fallback — but not on every render. Also the one place that
+  // actually calls `start()` for a tap-to-start card pick (see
+  // pendingAutoStartRef above): `start` comes from `useToolConversion
+  // (selectedTool ...)`, so it's only bound to the *new* tool once this
+  // effect runs after the render where `selectedTool` itself updated —
+  // calling it any earlier (e.g. synchronously inside the click handler)
+  // would still be bound to whichever tool was selected before the click.
   const prevToolSlugRef = useRef<ToolSlug | null>(null);
   useEffect(() => {
     const slug = selectedTool?.slug ?? null;
     if (slug !== prevToolSlugRef.current) {
       prevToolSlugRef.current = slug;
-      setFieldValues(selectedTool ? initialFieldValues(selectedTool) : {});
-      reset();
+      const values = selectedTool ? initialFieldValues(selectedTool) : {};
+      setFieldValues(values);
+      if (pendingAutoStartRef.current && selectedTool) {
+        pendingAutoStartRef.current = false;
+        start(files, values);
+      } else {
+        reset();
+      }
     }
-  }, [selectedTool, reset]);
+  }, [selectedTool, reset, start, files]);
 
   const handleInitialFiles = useCallback((fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -149,9 +177,46 @@ export function ConversionFlow() {
     setFiles((prev) => moveItem(prev, index, direction));
   }, []);
 
-  const handleToolSelect = useCallback((tool: ToolConfig) => {
-    setManualToolSlug(tool.slug);
-  }, []);
+  const handleToolSelect = useCallback(
+    (tool: ToolConfig) => {
+      // Guards both a rapid same-tick double/triple-tap (submitGuardRef,
+      // see above) and a click that arrives after a previous one already
+      // moved the flow out of idle (state.stage, once React has caught up).
+      if (state.stage !== 'idle' || submitGuardRef.current) return;
+
+      const initialValues = initialFieldValues(tool);
+      const hasMissingRequiredField = tool.fields.some(
+        (field) => field.required && !initialValues[field.name]?.trim(),
+      );
+      // Only when every required field already has a value (e.g. rotation's
+      // default, or a tool with no fields at all like PDF → Word) — a tool
+      // like watermark or protect, whose required text/password has no
+      // default, still needs the ParameterCard filled in and the Start
+      // button pressed, same as before.
+      const readyToStartImmediately =
+        !hasMissingRequiredField && !oversizedFile && files.length > 0;
+
+      if (!readyToStartImmediately) {
+        if (tool.slug !== selectedTool?.slug) setManualToolSlug(tool.slug);
+        return;
+      }
+
+      submitGuardRef.current = true;
+
+      if (tool.slug === selectedTool?.slug) {
+        // Already the active tool (e.g. tapping the auto-recommended card
+        // again) — `start` in this render's closure is already bound to it,
+        // so it's safe to call directly instead of round-tripping through
+        // the tool-change effect below.
+        start(files, initialValues);
+        return;
+      }
+
+      setManualToolSlug(tool.slug);
+      pendingAutoStartRef.current = true;
+    },
+    [files, oversizedFile, selectedTool, start, state.stage],
+  );
 
   const updateField = useCallback((name: string, value: string) => {
     setFieldValues((prev) => ({ ...prev, [name]: value }));
@@ -204,7 +269,7 @@ export function ConversionFlow() {
   const recommendedSlug = analysis.isBatch ? analysis.primaryToolId : null;
 
   return (
-    <section id="tools" className="mx-auto w-full max-w-[1200px] px-5 pb-16 sm:px-6">
+    <section id="tools" className="mx-auto w-full max-w-[1200px] px-5 pb-28 sm:px-6 sm:pb-16">
       {isIdle && files.length === 0 && (
         <div className="mx-auto max-w-xl">
           <UploadZone
@@ -218,7 +283,7 @@ export function ConversionFlow() {
       )}
 
       {isIdle && files.length > 0 && (
-        <div className="animate-fade-in-up mx-auto mt-8 w-full max-w-2xl">
+        <div className="animate-fade-in-up mx-auto mt-6 w-full max-w-2xl sm:mt-8">
           {oversizedFile ? (
             <Alert variant="danger">{t.errors.fileTooLargeDetail(oversizedFile.name)}</Alert>
           ) : category ? (
@@ -286,10 +351,10 @@ export function ConversionFlow() {
                 </div>
               ) : (
                 <>
-                  <h2 className="text-foreground sm:text-h3 mt-8 text-center text-[30px] font-semibold leading-[1.1]">
+                  <h2 className="text-foreground sm:text-h3 mt-5 text-center text-[24px] font-semibold leading-[1.1] sm:mt-8">
                     {t.upload.chooseActionHeading}
                   </h2>
-                  <div className="mt-4">
+                  <div className="mt-3 sm:mt-4">
                     <ToolCards
                       tools={compatibleTools}
                       selectedSlug={selectedTool?.slug ?? null}
@@ -299,7 +364,7 @@ export function ConversionFlow() {
                   </div>
 
                   {selectedTool && (
-                    <div className="mx-auto mt-6 max-w-xl">
+                    <div className="mx-auto mt-5 max-w-xl sm:mt-6">
                       <ParameterCard
                         tool={selectedTool}
                         values={fieldValues}
