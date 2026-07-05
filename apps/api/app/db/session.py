@@ -54,7 +54,17 @@ def get_engine() -> Engine:
                         "DATABASE_URL is required when OPERATIONS_STORE_BACKEND=postgres."
                     )
                 url = _with_psycopg_driver(settings.database_url)
-                _engine = create_engine(url, pool_pre_ping=True, future=True)
+                # Without this, a stalled/unreachable Postgres host has no
+                # bound on how long a *connection attempt* can hang (verified
+                # against the real Supabase instance: psycopg accepts this
+                # via connect_args, same as plain libpq's connect_timeout).
+                # This only bounds establishing the connection, not query
+                # execution time — pairs with running every caller's write
+                # in a worker thread (see run_conversion_job) so a slow
+                # query still can't block the event loop either way.
+                _engine = create_engine(
+                    url, pool_pre_ping=True, future=True, connect_args={"connect_timeout": 10}
+                )
     return _engine
 
 

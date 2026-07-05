@@ -974,7 +974,17 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         )
         job_store.update(job_id, status=JobStatus.COMPLETED, progress=100, output_path=output_path)
         logger.info("convert.job_completed", extra={"job_id": job_id})
-        record_operations_event(
+        # record_operations_event is a synchronous (blocking) Postgres write
+        # when OPERATIONS_STORE_BACKEND=postgres — the job above is already
+        # marked COMPLETED, but calling this directly (un-threaded) would
+        # still block this single-worker process's entire event loop for
+        # its duration, freezing every other in-flight request (including
+        # the frontend's own job-status polling) until it returns. Running
+        # it in a worker thread, the same pattern already used for
+        # converter.convert() above, keeps the loop free regardless of how
+        # slow/unresponsive the database connection is.
+        await asyncio.to_thread(
+            record_operations_event,
             event_type="conversion",
             tool_slug=job.module_slug,
             status="success",
@@ -991,7 +1001,8 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
             error="Conversion failed. The file may use unsupported features — try a different one.",
         )
         logger.exception("convert.job_failed", extra={"job_id": job_id})
-        record_operations_event(
+        await asyncio.to_thread(
+            record_operations_event,
             event_type="conversion",
             tool_slug=job.module_slug,
             status="failure",
