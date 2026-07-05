@@ -6,6 +6,7 @@ import { DosyaLabLogo } from '@/components/brand/DosyaLabLogo';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { getOverview } from '@/lib/admin/adminApi';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
@@ -25,7 +26,15 @@ export default function AdminLoginPage() {
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
-      setError('Giriş bilgileri doğrulanamadı.');
+      // A blocked/failed request (e.g. CSP connect-src, offline, DNS) never
+      // reaches Supabase, so it's a distinct failure mode from "wrong email
+      // or password" — conflating the two previously made a connectivity
+      // problem look like a credentials problem to the user.
+      setError(
+        isAuthRetryableFetchError(signInError)
+          ? 'Sunucuya bağlanılamadı. Bağlantınızı kontrol edip tekrar deneyin.'
+          : 'Giriş bilgileri doğrulanamadı.',
+      );
       setSubmitting(false);
       return;
     }

@@ -14,6 +14,20 @@ function apiOrigin(): string {
   }
 }
 
+/** Same derivation as `apiOrigin()`, for the Supabase project the Admin
+ * Panel's browser client talks to directly (see lib/supabase/client.ts,
+ * app/admin/login/page.tsx) — omitted entirely if unset/invalid rather than
+ * falling back to a hardcoded project, since there is no safe default. */
+function supabaseOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Practical CSP V1 for the actual DosyaLab architecture (see the SEO/
  * security audit report for the full reasoning per directive). Not a
@@ -30,10 +44,15 @@ function apiOrigin(): string {
  * - `worker-src` blob:: pdf.js's worker is a same-origin bundled asset
  *   (lib/pdf/pdfPreview.ts); blob: is kept only as pdf.js's own defensive
  *   fallback path, not something this app deliberately uses.
- * - `connect-src`: 'self' plus the one real, configured API origin — never
- *   a wildcard.
+ * - `connect-src`: 'self' plus the one real, configured API origin, plus the
+ *   configured Supabase project origin (the Admin Panel's browser client
+ *   calls Supabase Auth directly, not through the API) — never a wildcard.
  */
 function buildCsp(): string {
+  const connectSrc = ["'self'", apiOrigin()];
+  const supabaseOriginValue = supabaseOrigin();
+  if (supabaseOriginValue) connectSrc.push(supabaseOriginValue);
+
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
     'script-src': ["'self'", "'unsafe-inline'"],
@@ -41,7 +60,7 @@ function buildCsp(): string {
     'img-src': ["'self'", 'data:', 'blob:'],
     'font-src': ["'self'", 'data:'],
     'worker-src': ["'self'", 'blob:'],
-    'connect-src': ["'self'", apiOrigin()],
+    'connect-src': connectSrc,
     'object-src': ["'none'"],
     'base-uri': ["'self'"],
     'form-action': ["'self'"],

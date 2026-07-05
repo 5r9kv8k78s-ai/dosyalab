@@ -7,12 +7,16 @@ with one test's settings would leak into the next.
 """
 
 import io
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+import app.services.conversion as conversion_module
 import app.services.rate_limiter as rate_limiter_module
 from app.core.config import Settings, get_settings
 from app.main import app
+from app.modules.converter.base import ConversionModule
 
 
 def _tiny_limit_settings(tmp_path, max_requests: int) -> Settings:
@@ -47,7 +51,33 @@ def test_requests_below_threshold_are_not_rate_limited(tmp_path, sample_pdf_byte
         rate_limiter_module._conversion_limiter = None
 
 
-def test_returns_429_with_retry_after_above_threshold(tmp_path, sample_pdf_bytes: bytes) -> None:
+class _InstantPdfToDocxConverter(ConversionModule):
+    """Stand-in for the real converter so the background conversion job
+    (which `TestClient` runs synchronously inside `client.post`) finishes
+    instantly instead of taking ~27s. The real converter's runtime otherwise
+    pushes sequential requests in this test past the 60s rate-limit window,
+    making the threshold assertion flaky — this keeps the request/response
+    cycle and rate-limiter behavior untouched while skipping the actual
+    document conversion work.
+    """
+
+    slug = "pdf-to-docx"
+    input_formats = ("pdf",)
+    output_format = "docx"
+
+    def convert(self, source_path: Path, destination_dir: Path) -> Path:
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        output_path = destination_dir / f"{source_path.stem}.docx"
+        output_path.write_bytes(b"stub docx output")
+        return output_path
+
+
+def test_returns_429_with_retry_after_above_threshold(
+    tmp_path, sample_pdf_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        conversion_module, "get_converter", lambda slug: _InstantPdfToDocxConverter()
+    )
     rate_limiter_module._conversion_limiter = None
     settings = _tiny_limit_settings(tmp_path, max_requests=2)
     app.dependency_overrides[get_settings] = lambda: settings

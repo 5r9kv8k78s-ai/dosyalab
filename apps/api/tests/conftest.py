@@ -18,8 +18,16 @@ SAMPLE_WEBP_PATH = FIXTURES_DIR / "sample.webp"
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
+def client(tmp_path: Path) -> Iterator[TestClient]:
+    # Without this override, requests through this fixture (e.g.
+    # test_upload.py) hit the real, non-test `Settings.upload_dir` default
+    # (storage/uploads) and leave files on disk after the test run.
+    settings = Settings(upload_dir=tmp_path / "uploads")
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.fixture
