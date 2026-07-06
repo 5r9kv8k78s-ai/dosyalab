@@ -66,6 +66,18 @@ class Settings(BaseSettings):
     # terminated if that happens. Not enforced for other converters.
     pdf_to_docx_conversion_timeout_seconds: int = 120
 
+    # Ceiling for a single docx-to-pdf conversion (see app/services/
+    # conversion.py's `_convert_with_timeout`) — xhtml2pdf is a pure-Python
+    # HTML/CSS renderer with no C-level GIL release, so a pathological or
+    # very large DOCX can make it run far longer than a normal document
+    # would. Enforced with asyncio.wait_for around the existing worker
+    # thread, not a separate OS process: the underlying thread can't be
+    # forcibly killed and keeps running in the background after this fires,
+    # but the job is released as FAILED immediately rather than staying in
+    # PROCESSING forever — see that risk assessment for why process
+    # isolation wasn't judged necessary here the way it was for pdf-to-docx.
+    docx_to_pdf_conversion_timeout_seconds: int = 90
+
     # Public-production abuse protection for the conversion/upload surface
     # (see app/services/rate_limiter.py) — a process-local fixed-window
     # limiter, since no shared datastore (Redis, etc.) exists in this

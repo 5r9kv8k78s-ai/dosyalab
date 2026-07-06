@@ -11,7 +11,7 @@ import fitz
 from fastapi import UploadFile
 
 from app.core.config import Settings
-from app.modules.converter import get_converter
+from app.modules.converter import ConversionModule, get_converter
 from app.services.docx_validation import (
     DocxValidationError,
     inspect_docx,
@@ -1103,6 +1103,34 @@ async def _convert_pdf_to_docx_isolated(
     return Path(stdout_text)
 
 
+async def _convert_with_timeout(
+    converter: ConversionModule, job: ConversionJob, settings: Settings, timeout_seconds: float
+) -> Path:
+    """Runs `converter.convert` in a worker thread with a hard ceiling — for
+    converters where a real OS process (see `_convert_pdf_to_docx_isolated`)
+    was judged unnecessary, but an unbounded worker thread still isn't
+    acceptable. Unlike a subprocess, the underlying thread cannot actually
+    be killed and keeps running after this raises; the point is only to
+    release the job as FAILED promptly instead of leaving it in PROCESSING
+    forever, not to reclaim the thread pool slot early.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(converter.convert, job.source_path, settings.convert_output_dir),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            "convert.thread_timeout",
+            extra={
+                "job_id": job.id,
+                "tool_slug": job.module_slug,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        raise
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking
     progress — and the one shared point every tool's actual conversion
@@ -1159,6 +1187,12 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
                     job.source_path,
                     settings.convert_output_dir,
                     settings.pdf_to_docx_conversion_timeout_seconds,
+                )
+            elif job.module_slug == DOCX_TO_PDF_SLUG:
+                # xhtml2pdf (pure-Python HTML/CSS rendering) has no bound on
+                # how long it can run — see _convert_with_timeout.
+                output_path = await _convert_with_timeout(
+                    converter, job, settings, settings.docx_to_pdf_conversion_timeout_seconds
                 )
             else:
                 output_path = await asyncio.to_thread(
