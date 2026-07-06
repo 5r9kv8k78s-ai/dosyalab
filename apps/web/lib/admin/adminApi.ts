@@ -77,6 +77,15 @@ export interface FeedbackListResponse {
   counts_by_status: Record<string, number>;
 }
 
+export interface OperationsHistoryClearResponse {
+  deleted_count: number;
+}
+
+export interface MaintenanceStatus {
+  enabled: boolean;
+  message: string | null;
+}
+
 /**
  * The one place every Admin Panel screen calls through. Attaches the
  * current Supabase session's access token as a bearer token (never stored
@@ -158,5 +167,28 @@ export function updateFeedbackStatus(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: newStatus }),
+  });
+}
+
+/** Admin Panel's "Geçmişi Temizle" action — deletes operations-events
+ * history only (see apps/api/app/api/v1/endpoints/admin.py's
+ * `clear_operations_history`). Never touches feedback, conversion jobs, or
+ * uploaded/output files. */
+export function clearOperationsHistory(): Promise<OperationsHistoryClearResponse> {
+  return adminFetch('/operations-history', { method: 'DELETE' });
+}
+
+export function getAdminMaintenanceStatus(): Promise<MaintenanceStatus> {
+  return adminFetch('/maintenance');
+}
+
+export function updateMaintenanceStatus(
+  enabled: boolean,
+  message: string | null,
+): Promise<MaintenanceStatus> {
+  return adminFetch('/maintenance', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, message }),
   });
 }

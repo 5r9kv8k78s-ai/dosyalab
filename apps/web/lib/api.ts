@@ -54,6 +54,44 @@ export async function getHealth(): Promise<HealthStatus> {
   return response.json();
 }
 
+export interface MaintenanceStatus {
+  enabled: boolean;
+  message: string | null;
+}
+
+// app/page.tsx now awaits this on every server-rendered request (it needs
+// a `no-store` fetch, not a static one, so a freshly loaded page already
+// reflects a just-enabled Maintenance Mode) — a bounded timeout keeps a
+// slow/unreachable backend from hanging that render indefinitely.
+const MAINTENANCE_STATUS_TIMEOUT_MS = 5_000;
+
+/**
+ * Public, unauthenticated — safe to call from both the server (see
+ * app/page.tsx's initial render) and the browser (see
+ * components/maintenance/MaintenanceGate.tsx's periodic revalidation).
+ * Never throws on a network/server error, and never hangs past
+ * `MAINTENANCE_STATUS_TIMEOUT_MS`: both cases resolve to "not in
+ * maintenance", since the real security boundary is the backend's own 503
+ * on conversion submit (see MaintenanceGate's docstring), not this status
+ * read.
+ */
+export async function getMaintenanceStatus(): Promise<MaintenanceStatus> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MAINTENANCE_STATUS_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/maintenance/status`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) return { enabled: false, message: null };
+    return await response.json();
+  } catch {
+    return { enabled: false, message: null };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function parseErrorDetail(xhr: XMLHttpRequest, fallback: string): Promise<string> {
   try {
     const body = JSON.parse(xhr.responseText);

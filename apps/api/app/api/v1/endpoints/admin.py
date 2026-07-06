@@ -9,12 +9,14 @@ from app.schemas.admin import (
     ErrorsResponse,
     FeedbackAdminItem,
     FeedbackListResponse,
+    OperationsHistoryClearResponse,
     OverviewChartResponse,
     OverviewResponse,
     ToolAggregationItem,
     ToolsResponse,
 )
 from app.schemas.feedback import FeedbackStatusUpdateRequest
+from app.schemas.maintenance import MaintenanceStatusResponse, MaintenanceUpdateRequest
 from app.services.admin_auth import require_admin
 from app.services.feedback import (
     STATUSES as FEEDBACK_STATUSES,
@@ -24,6 +26,7 @@ from app.services.feedback import (
     validate_status,
 )
 from app.services.operations_events import OperationsEventStore, get_operations_event_store
+from app.services.site_settings import SiteSettingsStore, get_site_settings_store
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,10 @@ def _get_event_store() -> OperationsEventStore:
 
 def _get_fb_store() -> FeedbackStore:
     return get_feedback_store()
+
+
+def _get_site_settings_store() -> SiteSettingsStore:
+    return get_site_settings_store()
 
 
 @router.get("/overview", response_model=OverviewResponse)
@@ -131,3 +138,36 @@ def update_feedback_status(
     if updated is None:
         raise HTTPException(status_code=404, detail="Feedback not found.")
     return FeedbackAdminItem(**updated.__dict__)
+
+
+@router.delete("/operations-history", response_model=OperationsHistoryClearResponse)
+def clear_operations_history(
+    store: OperationsEventStore = Depends(_get_event_store),
+) -> OperationsHistoryClearResponse:
+    """Admin Panel's "Geçmişi Temizle" action — deletes every operations
+    event (the data behind Overview/Tools/Errors), and nothing else. Never
+    touches the conversion job store, feedback, uploaded/output files, auth,
+    or settings data; this store has no handle on any of them."""
+    deleted_count = store.clear_all()
+    logger.warning("admin.operations_history_cleared", extra={"deleted_count": deleted_count})
+    return OperationsHistoryClearResponse(deleted_count=deleted_count)
+
+
+@router.get("/maintenance", response_model=MaintenanceStatusResponse)
+def get_admin_maintenance_status(
+    store: SiteSettingsStore = Depends(_get_site_settings_store),
+) -> MaintenanceStatusResponse:
+    status = store.get_maintenance_status()
+    return MaintenanceStatusResponse(enabled=status.enabled, message=status.message)
+
+
+@router.patch("/maintenance", response_model=MaintenanceStatusResponse)
+def update_maintenance_status(
+    payload: MaintenanceUpdateRequest,
+    store: SiteSettingsStore = Depends(_get_site_settings_store),
+) -> MaintenanceStatusResponse:
+    updated = store.set_maintenance_status(enabled=payload.enabled, message=payload.message)
+    logger.warning(
+        "admin.maintenance_status_changed", extra={"maintenance_enabled": updated.enabled}
+    )
+    return MaintenanceStatusResponse(enabled=updated.enabled, message=updated.message)

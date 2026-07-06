@@ -144,6 +144,14 @@ class OperationsEventStore(Protocol):
     def get_tool_aggregation(self, since: datetime) -> list[ToolAggregation]: ...
     def get_error_aggregation(self, since: datetime) -> list[tuple[str, int]]: ...
 
+    def clear_all(self) -> int:
+        """Deletes every event this store holds — the Admin Panel's
+        "Geçmişi Temizle" action. Scoped to operations events only: never
+        touches feedback, conversion jobs, uploaded/output files, auth, or
+        settings data, none of which this store has any handle on. Returns
+        the number of events deleted."""
+        ...
+
 
 class InMemoryOperationsEventStore:
     """Process-local, in-memory `OperationsEventStore` — thread-safe, with
@@ -297,6 +305,12 @@ class InMemoryOperationsEventStore:
 
         counts = Counter(e.error_code for e in events)
         return sorted(counts.items(), key=lambda item: item[1], reverse=True)
+
+    def clear_all(self) -> int:
+        with self._lock:
+            deleted_count = len(self._events)
+            self._events.clear()
+            return deleted_count
 
 
 # Every tool's *input* family is fixed and known statically — mirrors the
@@ -548,6 +562,16 @@ class PostgresOperationsEventStore:
                 .order_by(func.count().desc())
             ).all()
         return [(code, count) for code, count in rows]
+
+    def clear_all(self) -> int:
+        from sqlalchemy import delete
+
+        from app.db.models import OperationsEventRow
+        from app.db.session import session_scope
+
+        with session_scope() as session:
+            result = session.execute(delete(OperationsEventRow))
+            return result.rowcount
 
 
 _store: OperationsEventStore | None = None

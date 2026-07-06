@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ActivityChart } from '@/components/admin/ActivityChart';
+import { MaintenanceModeCard } from '@/components/admin/MaintenanceModeCard';
 import { MetricCard } from '@/components/admin/MetricCard';
+import { OperationsHistoryCleanup } from '@/components/admin/OperationsHistoryCleanup';
 import { RangeSwitcher } from '@/components/admin/RangeSwitcher';
 import {
   AdminApiError,
@@ -39,6 +41,9 @@ export default function AdminOverviewPage() {
   const [topErrors, setTopErrors] = useState<ErrorAggregationItem[]>([]);
   const [error, setErrorState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bumped after a successful "Geçmişi Temizle" so the effect below
+  // re-fetches every screen's data without duplicating its fetch logic.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +73,7 @@ export default function AdminOverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [range, router]);
+  }, [range, router, refreshKey]);
 
   return (
     <div>
@@ -78,6 +83,11 @@ export default function AdminOverviewPage() {
           <p className="text-muted text-small mt-1">DosyaLab operasyonlarının güncel görünümü.</p>
         </div>
         <RangeSwitcher value={range} onChange={setRange} />
+      </div>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <MaintenanceModeCard />
+        <OperationsHistoryCleanup onCleared={() => setRefreshKey((prev) => prev + 1)} />
       </div>
 
       {error && <p className="text-danger text-small mt-6">{error}</p>}

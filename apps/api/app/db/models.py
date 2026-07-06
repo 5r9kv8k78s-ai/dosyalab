@@ -10,7 +10,7 @@ anywhere here, by construction.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -87,3 +87,27 @@ class FeedbackRow(Base):
         Index("ix_feedback_category", "category"),
         Index("ix_feedback_created_at", "created_at"),
     )
+
+
+class SiteSettingsRow(Base):
+    """Single-row site-wide configuration — currently just maintenance mode
+    (see app/services/site_settings.py). A dedicated singleton row (fixed
+    `id=1`, enforced by the check constraint below) rather than a generic
+    key/value table: there is exactly one setting group today, and this
+    stays the narrowest schema that satisfies it without speculating about
+    future settings that don't exist yet.
+
+    Deliberately Postgres-backed only, like `FeedbackRow` — maintenance
+    state must survive a Render redeploy/restart, which process memory
+    cannot guarantee (see app/services/rate_limiter.py's docstring for what
+    goes wrong when state is only ever in-process).
+    """
+
+    __tablename__ = "site_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    maintenance_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    maintenance_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_site_settings_singleton"),)

@@ -319,6 +319,12 @@ export const tr = {
     en: 'English',
   },
 
+  maintenance: {
+    title: 'DosyaLab kısa bir bakımda',
+    defaultBody:
+      'Size daha iyi hizmet verebilmek için kısa bir bakım çalışması yapıyoruz. Birazdan tekrar buradayız.',
+  },
+
   pages: {
     about: {
       metaTitle: 'Hakkımızda — DosyaLab',

@@ -1,5 +1,6 @@
 import { ConversionFlow } from '@/components/home/ConversionFlow';
 import { Hero } from '@/components/home/Hero';
+import { MaintenanceGate } from '@/components/maintenance/MaintenanceGate';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { SITE_URL } from '@/lib/seo/siteUrl';
 
@@ -21,8 +22,10 @@ export default function Home() {
   return (
     <main>
       <JsonLd data={WEB_APPLICATION_JSON_LD} />
-      <Hero />
-      <ConversionFlow />
+      <MaintenanceGate>
+        <Hero />
+        <ConversionFlow />
+      </MaintenanceGate>
     </main>
   );
 }

@@ -30,6 +30,7 @@ from app.services.conversion import (
 from app.services.docx_validation import DocxValidationError
 from app.services.image_validation import ImageValidationError
 from app.services.jobs import JobStatus, job_store
+from app.services.maintenance import enforce_not_in_maintenance
 from app.services.operations_events import classify_input_family, record_operations_event
 from app.services.pdf_validation import PdfValidationError
 from app.services.rate_limiter import enforce_conversion_rate_limit
@@ -39,10 +40,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convert", tags=["convert"])
 
 # Applied to every conversion/upload route below (not to health, robots,
-# sitemap, or static asset routes — those aren't the expensive operation
-# this protects). See app/services/rate_limiter.py for the algorithm and
-# its documented process-local/fixed-window limitations.
-_RATE_LIMITED = [Depends(enforce_conversion_rate_limit)]
+# sitemap, static asset, or job status/download routes — those aren't the
+# expensive operation this protects, and job status/download must keep
+# working during Maintenance Mode). See app/services/rate_limiter.py for the
+# rate-limit algorithm's documented limitations, and app/services/
+# maintenance.py for why this is the single place every current and future
+# conversion tool is gated — never a per-route copy/paste check.
+_RATE_LIMITED = [Depends(enforce_conversion_rate_limit), Depends(enforce_not_in_maintenance)]
 
 # Keyed by output file suffix rather than converter slug, so the shared
 # download endpoint below stays correct for any future format without

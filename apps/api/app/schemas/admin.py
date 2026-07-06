@@ -64,3 +64,7 @@ class FeedbackAdminItem(BaseModel):
 class FeedbackListResponse(BaseModel):
     items: list[FeedbackAdminItem]
     counts_by_status: dict[str, int]
+
+
+class OperationsHistoryClearResponse(BaseModel):
+    deleted_count: int

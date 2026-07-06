@@ -16,6 +16,7 @@ import pytest
 from app.db.models import Base
 from app.services.operations_events import PostgresOperationsEventStore
 from app.services.feedback import PostgresFeedbackStore
+from app.services.site_settings import PostgresSiteSettingsStore
 
 
 @pytest.fixture
@@ -241,3 +242,72 @@ def test_feedback_row_has_no_ip_or_user_agent_column() -> None:
     for name in column_names:
         lowered = name.lower()
         assert not any(bad in lowered for bad in forbidden), name
+
+
+def test_operations_event_clear_all_deletes_events_only(sqlite_engine) -> None:
+    events_store = PostgresOperationsEventStore()
+    feedback_store = PostgresFeedbackStore()
+
+    events_store.record(
+        event_type="conversion",
+        tool_slug="pdf-to-docx",
+        status="success",
+        file_count=1,
+        input_family="pdf",
+        duration_ms=100,
+        error_code=None,
+    )
+    events_store.record(
+        event_type="conversion",
+        tool_slug="pdf-to-docx",
+        status="failure",
+        file_count=1,
+        input_family="pdf",
+        duration_ms=50,
+        error_code="conversion_failed",
+    )
+    feedback_store.create(category="idea", message="Bu kalsın lütfen.", email=None)
+
+    deleted_count = events_store.clear_all()
+
+    assert deleted_count == 2
+    since = datetime.now(UTC) - timedelta(days=1)
+    assert events_store.get_overview(since).conversion_attempts == 0
+    # Feedback must survive an operations-history clear untouched.
+    assert len(feedback_store.list(status=None, category=None)) == 1
+
+
+def test_operations_event_clear_all_on_empty_store_returns_zero(sqlite_engine) -> None:
+    store = PostgresOperationsEventStore()
+    assert store.clear_all() == 0
+
+
+def test_site_settings_store_defaults_to_disabled_when_row_missing(sqlite_engine) -> None:
+    store = PostgresSiteSettingsStore()
+    status = store.get_maintenance_status()
+    assert status.enabled is False
+
+
+def test_site_settings_store_set_and_get_round_trips(sqlite_engine) -> None:
+    store = PostgresSiteSettingsStore()
+
+    enabled_status = store.set_maintenance_status(enabled=True, message="Bakımdayız.")
+    assert enabled_status.enabled is True
+    assert enabled_status.message == "Bakımdayız."
+
+    # A fresh store instance (simulating a new request/process) must read
+    # back the same state — this is the actual "survives a restart"
+    # guarantee, since nothing here is held in process memory.
+    reloaded = PostgresSiteSettingsStore()
+    assert reloaded.get_maintenance_status() == enabled_status
+
+    disabled_status = store.set_maintenance_status(enabled=False, message="Bakımdayız.")
+    assert disabled_status.enabled is False
+    assert PostgresSiteSettingsStore().get_maintenance_status().enabled is False
+
+
+def test_site_settings_row_is_a_true_singleton() -> None:
+    from app.db.models import SiteSettingsRow
+
+    constraint_names = {c.name for c in SiteSettingsRow.__table__.constraints}
+    assert "ck_site_settings_singleton" in constraint_names

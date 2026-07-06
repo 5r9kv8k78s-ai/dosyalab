@@ -9,6 +9,7 @@ import app.services.operations_events as operations_events_module
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.services.jobs import job_store
+from app.services.site_settings import MaintenanceStatus, get_site_settings_store
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_PDF_PATH = FIXTURES_DIR / "sample.pdf"
@@ -174,3 +175,35 @@ def _force_memory_operations_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[
     operations_events_module._store = None
     yield
     operations_events_module._store = None
+
+
+class _InMemorySiteSettingsStoreForTests:
+    def __init__(self) -> None:
+        self._status = MaintenanceStatus(enabled=False, message=None)
+
+    def get_maintenance_status(self) -> MaintenanceStatus:
+        return self._status
+
+    def set_maintenance_status(self, *, enabled: bool, message: str | None) -> MaintenanceStatus:
+        self._status = MaintenanceStatus(enabled=enabled, message=message)
+        return self._status
+
+
+@pytest.fixture(autouse=True)
+def _force_fake_site_settings_store() -> Iterator[None]:
+    """`PostgresSiteSettingsStore` is the only implementation (see
+    app/services/site_settings.py — Postgres-only by design, same as
+    `PostgresFeedbackStore`, no in-memory backend switch to fall back on
+    the way operations_events has). Without this override, every
+    conversion-submit test would transitively call `enforce_not_in_
+    maintenance` (wired onto every /convert/* route — see convert.py's
+    `_RATE_LIMITED`) and open a real connection to whatever DATABASE_URL
+    happens to be configured in the local .env. `get_site_settings_store`
+    is always reached through `Depends(...)`, so `app.dependency_overrides`
+    — not monkeypatch — is the correct tool here; a test that cares about a
+    specific maintenance state overrides this again with its own fake.
+    """
+    fake_store = _InMemorySiteSettingsStoreForTests()
+    app.dependency_overrides[get_site_settings_store] = lambda: fake_store
+    yield
+    app.dependency_overrides.pop(get_site_settings_store, None)

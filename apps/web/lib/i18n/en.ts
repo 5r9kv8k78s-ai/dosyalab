@@ -315,6 +315,12 @@ export const en: Translations = {
     en: 'English',
   },
 
+  maintenance: {
+    title: 'DosyaLab is briefly under maintenance',
+    defaultBody:
+      "We're doing a short maintenance run to serve you better. We'll be back shortly.",
+  },
+
   pages: {
     about: {
       metaTitle: 'About — DosyaLab',
