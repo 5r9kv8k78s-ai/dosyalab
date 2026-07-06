@@ -10,6 +10,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.db.models import Base
+from app.db.session import _with_psycopg_driver
 
 config = context.config
 
@@ -26,7 +27,11 @@ def _database_url() -> str:
             "DATABASE_URL is not set — required to run migrations. "
             "See apps/api/.env.example."
         )
-    return settings.database_url
+    # Same normalization app/db/session.py's get_engine() applies — a bare
+    # postgresql:// URL (e.g. pasted from Supabase's dashboard) otherwise
+    # makes SQLAlchemy default to the psycopg2 dialect, which this project
+    # doesn't install (see requirements.txt's psycopg[binary], v3).
+    return _with_psycopg_driver(settings.database_url)
 
 
 def run_migrations_offline() -> None:
