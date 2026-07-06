@@ -1,5 +1,6 @@
 import io
 
+import fitz
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
@@ -51,6 +52,34 @@ def test_extract_text_single_page_returns_less_than_full_document(
 
     assert len(page_text) < len(full_text)
     assert len(page_text) > 0
+
+
+def test_extract_text_scanned_pdf_explains_instead_of_returning_blank_file(
+    client_with_tmp_storage: TestClient,
+) -> None:
+    """Regression test: a PDF with no embedded text layer (e.g. a scanned
+    document) used to silently produce an empty .txt file. See
+    app/modules/converter/extract_text.py — the job should still complete
+    (this isn't OCR), but the downloaded file must explain what happened
+    rather than being blank.
+    """
+    doc = fitz.open()
+    doc.new_page()  # a page with no text inserted — mirrors an image-only PDF
+    scanned_pdf_bytes = doc.tobytes()
+    doc.close()
+
+    response = _upload(client_with_tmp_storage, scanned_pdf_bytes)
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    status_body = client_with_tmp_storage.get(f"/api/v1/convert/jobs/{job_id}").json()
+    assert status_body["status"] == "completed"
+
+    download_response = client_with_tmp_storage.get(status_body["download_url"])
+    assert download_response.status_code == 200
+    body_text = download_response.content.decode("utf-8")
+    assert body_text.strip() != ""
+    assert "scanned" in body_text.lower() or "image-only" in body_text.lower()
 
 
 def test_extract_text_rejects_out_of_range_page(

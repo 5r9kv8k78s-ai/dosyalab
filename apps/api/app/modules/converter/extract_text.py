@@ -5,6 +5,16 @@ from app.converters.pdf_engine import PdfEngine
 from app.modules.converter.base import ConversionModule
 from app.modules.converter.registry import register_converter
 
+# PdfEngine.extract_text only reads a PDF's embedded text layer (PyMuPDF's
+# get_text()) — a scanned/image-only PDF has none, and previously came back
+# as a silently empty .txt file with no indication why. This isn't OCR (out
+# of scope); it's just telling the user what actually happened instead of
+# handing them a blank download.
+_NO_TEXT_FOUND_MESSAGE = (
+    "No text could be extracted from this PDF. It may be a scanned document "
+    "or an image-only PDF with no embedded text layer."
+)
+
 
 class ExtractTextConverter(ConversionModule):
     """Extracts text content from a PDF into a .txt file, delegating to
@@ -30,7 +40,7 @@ class ExtractTextConverter(ConversionModule):
 
         destination_dir.mkdir(parents=True, exist_ok=True)
         output_path = destination_dir / "extracted.txt"
-        output_path.write_text(text, encoding="utf-8")
+        output_path.write_text(text if text.strip() else _NO_TEXT_FOUND_MESSAGE, encoding="utf-8")
         return output_path
 
 
