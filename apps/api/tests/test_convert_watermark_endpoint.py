@@ -33,6 +33,31 @@ def test_watermark_success_end_to_end(
     assert "CONFIDENTIAL" in doc[0].get_text()
 
 
+def test_watermark_renders_turkish_characters_correctly(
+    client_with_tmp_storage: TestClient, sample_pdf_bytes: bytes
+) -> None:
+    """Regression test: fitz's base-14 "helv" font (WinAnsiEncoding) has no
+    Turkish letters — ş, ı, İ, ğ used to come back from get_text() replaced
+    with "·" (missing-glyph placeholder), a silent quality defect rather
+    than an error. See app/converters/pdf_engine/engine.py's watermark_pdf,
+    now using the same bundled Unicode TTF (Vera) docx_to_pdf.py already
+    registers for the identical reason.
+    """
+    turkish_text = "Gizli Belge - İşlem Şüpheli ğüşiöç"
+    response = _upload(client_with_tmp_storage, sample_pdf_bytes, text=turkish_text)
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    status_body = client_with_tmp_storage.get(f"/api/v1/convert/jobs/{job_id}").json()
+    assert status_body["status"] == "completed"
+
+    download_response = client_with_tmp_storage.get(status_body["download_url"])
+    doc = fitz.open(stream=download_response.content, filetype="pdf")
+    extracted = doc[0].get_text()
+    assert turkish_text in extracted
+    assert "·" not in extracted
+
+
 def test_watermark_accepts_custom_options(
     client_with_tmp_storage: TestClient, sample_pdf_bytes: bytes
 ) -> None:

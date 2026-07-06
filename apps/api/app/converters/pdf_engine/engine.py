@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import fitz
+import reportlab
 
 from app.converters.pdf_engine.exceptions import (
     CorruptPdfError,
@@ -12,6 +13,25 @@ from app.converters.pdf_engine.exceptions import (
 from app.converters.pdf_engine.interface import PdfEngineInterface
 
 _SUPPORTED_IMAGE_FORMATS = {"png", "jpg", "jpeg"}
+
+# fitz's base-14 fonts (e.g. "helv"/Helvetica) only cover WinAnsiEncoding,
+# which has no Turkish letters (ş, ı, İ, ğ) — verified empirically: watermark
+# text containing them came back from get_text() with those glyphs replaced
+# by "·" (missing-glyph placeholder), not an exception, so this was a silent
+# quality defect, not a crash. Vera is the same bundled, Unicode-coverage TTF
+# app/modules/converter/docx_to_pdf.py already registers for the same reason
+# (reused here as a font *file* rather than a reportlab-registered name,
+# since fitz.Page.insert_text takes its own `fontfile` argument instead).
+_WATERMARK_FONT_PATH = Path(reportlab.__file__).parent / "fonts" / "Vera.ttf"
+_WATERMARK_FONT_NAME = "Vera"
+_watermark_font: fitz.Font | None = None
+
+
+def _get_watermark_font() -> fitz.Font:
+    global _watermark_font
+    if _watermark_font is None:
+        _watermark_font = fitz.Font(fontfile=str(_WATERMARK_FONT_PATH))
+    return _watermark_font
 
 
 class PdfEngine(PdfEngineInterface):
@@ -126,17 +146,23 @@ class PdfEngine(PdfEngineInterface):
             raise PdfEngineError("Watermark text must not be empty.")
 
         gray_level = 1 - min(max(opacity, 0.0), 1.0)
+        unicode_font = _get_watermark_font()
         with self._open(input_path) as doc:
             for page in doc:
                 rect = page.rect
                 center = fitz.Point(rect.width / 2, rect.height / 2)
-                text_width = fitz.get_text_length(text, fontname="helv", fontsize=font_size)
+                # fitz.get_text_length only measures built-in fonts — using
+                # it here (as before) with a custom fontfile would center
+                # the text using the wrong metrics. Font.text_length works
+                # for any loaded font, including this Unicode TTF.
+                text_width = unicode_font.text_length(text, fontsize=font_size)
                 origin = (rect.width / 2 - text_width / 2, rect.height / 2)
                 page.insert_text(
                     origin,
                     text,
                     fontsize=font_size,
-                    fontname="helv",
+                    fontname=_WATERMARK_FONT_NAME,
+                    fontfile=str(_WATERMARK_FONT_PATH),
                     color=(gray_level, gray_level, gray_level),
                     morph=(center, fitz.Matrix(rotation)),
                     overlay=True,
