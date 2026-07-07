@@ -6,6 +6,7 @@ import reportlab
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from xhtml2pdf import pisa
+from xhtml2pdf.default import PML_ERROR
 
 from app.modules.converter.base import ConversionModule
 from app.modules.converter.registry import register_converter
@@ -76,6 +77,24 @@ class DocxToPdfConverter(ConversionModule):
 
         if pisa_status.err:
             output_path.unlink(missing_ok=True)
+            # pisa_status.log entries also carry a message string and an
+            # HTML source fragment (xhtml2pdf's pisaContext.error/warning) —
+            # both can quote the user's actual document text, so only the
+            # error line numbers are logged (they reveal structure, not
+            # content) to help debug which part of the render failed.
+            error_line_numbers = [
+                line_number
+                for level, line_number, _msg, _fragment in pisa_status.log
+                if level == PML_ERROR
+            ]
+            logger.warning(
+                "docx_to_pdf.render_errors",
+                extra={
+                    "error_count": pisa_status.err,
+                    "warning_count": pisa_status.warn,
+                    "error_line_numbers": error_line_numbers,
+                },
+            )
             raise RuntimeError(f"xhtml2pdf reported {pisa_status.err} error(s) during rendering")
 
         logger.info("docx_to_pdf.convert.done", extra={"output": str(output_path)})
