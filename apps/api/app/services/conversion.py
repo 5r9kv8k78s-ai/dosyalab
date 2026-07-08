@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 import shutil
@@ -1010,29 +1011,46 @@ class ConversionSubprocessError(Exception):
 _STAGE_LOG_PREFIX = "[PDF2DOCX STAGE] "
 
 
-def _forward_stage_timing_lines(stderr_bytes: bytes, *, job_id: str, tool_slug: str) -> None:
-    """Logs only the worker's fixed-prefix stage-timing lines (see
-    pdf_to_docx_worker.py) as structured `convert.pdf_to_docx_stage`
-    events — every other stderr line is silently ignored, never logged.
+def _forward_stage_timing_line(line: str, *, job_id: str, tool_slug: str) -> None:
+    """Logs one worker stderr line as a structured `convert.pdf_to_docx_
+    stage` event, but only if it carries the exact fixed prefix (see
+    pdf_to_docx_worker.py) — every other line is silently ignored, never
+    logged.
     """
-    for line in stderr_bytes.decode(errors="replace").splitlines():
-        if not line.startswith(_STAGE_LOG_PREFIX):
-            continue
-        fields = dict(
-            part.split("=", 1) for part in line[len(_STAGE_LOG_PREFIX) :].split() if "=" in part
-        )
-        stage = fields.get("stage")
-        duration_ms = fields.get("duration_ms")
-        if not stage or not duration_ms or not duration_ms.isdigit():
-            continue
-        logger.info(
-            "convert.pdf_to_docx_stage",
-            extra={
-                "job_id": job_id,
-                "tool_slug": tool_slug,
-                "stage": stage,
-                "duration_ms": int(duration_ms),
-            },
+    if not line.startswith(_STAGE_LOG_PREFIX):
+        return
+    fields = dict(
+        part.split("=", 1) for part in line[len(_STAGE_LOG_PREFIX) :].split() if "=" in part
+    )
+    stage = fields.get("stage")
+    duration_ms = fields.get("duration_ms")
+    if not stage or not duration_ms or not duration_ms.isdigit():
+        return
+    logger.info(
+        "convert.pdf_to_docx_stage",
+        extra={
+            "job_id": job_id,
+            "tool_slug": tool_slug,
+            "stage": stage,
+            "duration_ms": int(duration_ms),
+        },
+    )
+
+
+async def _drain_stage_timing_stderr(
+    stderr: asyncio.StreamReader, *, job_id: str, tool_slug: str
+) -> None:
+    """Reads and forwards the worker's stderr line by line *as the
+    subprocess produces it*, rather than waiting for the process to exit
+    — the only way a stage that completed before a later timeout can ever
+    reach this process's logger (see the root-cause note on
+    `_run_worker_subprocess`: `communicate()` only returns its buffered
+    streams after the child exits, discarding them entirely if it times
+    out first).
+    """
+    async for raw_line in stderr:
+        _forward_stage_timing_line(
+            raw_line.decode(errors="replace").rstrip("\n"), job_id=job_id, tool_slug=tool_slug
         )
 
 
@@ -1065,15 +1083,30 @@ async def _run_worker_subprocess(
         *args,
         stdout=asyncio.subprocess.PIPE,
         # Captured (not discarded) so this process can forward the
-        # worker's own fixed-prefix stage-timing lines (see
-        # _forward_stage_timing_lines) — every other line a worker's
+        # worker's own fixed-prefix stage-timing lines in real time (see
+        # _drain_stage_timing_stderr) — every other line a worker's
         # stderr could carry (e.g. a traceback with a source path) is
         # still never logged or surfaced, only those exact lines are.
         stderr=asyncio.subprocess.PIPE,
     )
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    # Read stdout and stderr concurrently rather than via communicate():
+    # communicate() only returns its buffered streams once the process
+    # exits, so a stage-timing line the worker already wrote to stderr
+    # would never reach this process's logger for a job that ends up
+    # timing out — this is the exact gap that left Render's logs without
+    # any convert.pdf_to_docx_stage events for a job that hit the 120s
+    # timeout. Draining stderr in its own task, line by line, as the
+    # subprocess produces it, is what makes real-time forwarding possible.
+    stderr_task = asyncio.create_task(
+        _drain_stage_timing_stderr(process.stderr, job_id=job_id, tool_slug=tool_slug)
+    )
+    stdout_task = asyncio.create_task(process.stdout.read())
 
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+        stdout = await asyncio.wait_for(stdout_task, timeout=timeout_seconds)
     except TimeoutError:
         elapsed_ms = int((time.monotonic() - started_at) * 1000)
         logger.warning(
@@ -1086,9 +1119,18 @@ async def _run_worker_subprocess(
             },
         )
         await _terminate_then_kill(process, job_id=job_id, tool_slug=tool_slug)
+        stderr_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await stderr_task
         raise ConversionSubprocessError(
             f"Conversion subprocess exceeded {timeout_seconds}s timeout.", timed_out=True
         ) from None
+
+    # stdout reached EOF, which for this worker only happens right before
+    # it exits — wait() reaps it and makes the real exit code available,
+    # exactly as communicate() would have.
+    await process.wait()
+    await stderr_task
 
     elapsed_ms = int((time.monotonic() - started_at) * 1000)
     logger.info(
@@ -1100,7 +1142,6 @@ async def _run_worker_subprocess(
             "exit_code": process.returncode,
         },
     )
-    _forward_stage_timing_lines(stderr, job_id=job_id, tool_slug=tool_slug)
     if process.returncode != 0:
         raise ConversionSubprocessError(
             f"Conversion subprocess exited with code {process.returncode}."

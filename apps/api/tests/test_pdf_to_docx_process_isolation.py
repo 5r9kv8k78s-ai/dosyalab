@@ -374,3 +374,38 @@ async def test_pdf_to_docx_stage_timing_logs_never_contain_source_path_or_filena
         rendered = " ".join(str(v) for v in vars(record).values())
         for value in forbidden:
             assert value not in rendered
+
+
+@pytest.mark.asyncio
+async def test_stage_timing_line_is_forwarded_even_when_the_job_times_out(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The exact regression this instrumentation was fixed for: a worker
+    that emits a stage-timing line and then hangs past the timeout must
+    still have that line reach the parent's logger in real time — not be
+    silently lost because `communicate()` only returns its buffered
+    streams once the process exits (which, for a genuinely hanging
+    process, never happens before the parent kills it)."""
+    script = (
+        "import sys, time\n"
+        "print('[PDF2DOCX STAGE] stage=load_pages duration_ms=42', file=sys.stderr, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+
+    with caplog.at_level(logging.INFO, logger="app.services.conversion"):
+        with pytest.raises(ConversionSubprocessError):
+            await _run_worker_subprocess(
+                [sys.executable, "-c", script],
+                timeout_seconds=0.3,
+                job_id="stage-timeout-job",
+                tool_slug=PDF_TO_DOCX_SLUG,
+            )
+
+    stage_records = [r for r in caplog.records if r.msg == "convert.pdf_to_docx_stage"]
+    assert len(stage_records) == 1
+    assert stage_records[0].stage == "load_pages"
+    assert stage_records[0].duration_ms == 42
+    assert stage_records[0].job_id == "stage-timeout-job"
+
+    messages = [r.msg for r in caplog.records]
+    assert "convert.process_timeout" in messages
