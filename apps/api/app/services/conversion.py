@@ -1003,6 +1003,39 @@ class ConversionSubprocessError(Exception):
         self.timed_out = timed_out
 
 
+# The exact stage-timing line prefix `pdf_to_docx_worker.py`'s
+# `_print_stage_timings` writes to stderr — the only stderr content this
+# process ever forwards to its own logger; anything else on stderr
+# (which could incidentally carry a path or traceback text) is discarded.
+_STAGE_LOG_PREFIX = "[PDF2DOCX STAGE] "
+
+
+def _forward_stage_timing_lines(stderr_bytes: bytes, *, job_id: str, tool_slug: str) -> None:
+    """Logs only the worker's fixed-prefix stage-timing lines (see
+    pdf_to_docx_worker.py) as structured `convert.pdf_to_docx_stage`
+    events — every other stderr line is silently ignored, never logged.
+    """
+    for line in stderr_bytes.decode(errors="replace").splitlines():
+        if not line.startswith(_STAGE_LOG_PREFIX):
+            continue
+        fields = dict(
+            part.split("=", 1) for part in line[len(_STAGE_LOG_PREFIX) :].split() if "=" in part
+        )
+        stage = fields.get("stage")
+        duration_ms = fields.get("duration_ms")
+        if not stage or not duration_ms or not duration_ms.isdigit():
+            continue
+        logger.info(
+            "convert.pdf_to_docx_stage",
+            extra={
+                "job_id": job_id,
+                "tool_slug": tool_slug,
+                "stage": stage,
+                "duration_ms": int(duration_ms),
+            },
+        )
+
+
 async def _run_worker_subprocess(
     args: list[str],
     *,
@@ -1031,15 +1064,16 @@ async def _run_worker_subprocess(
     process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
-        # Never captured/logged/surfaced — a worker's traceback could
-        # incidentally include the source file path, which must never
-        # reach any log or the user. The exit code is the only signal
-        # the parent needs to detect failure.
-        stderr=asyncio.subprocess.DEVNULL,
+        # Captured (not discarded) so this process can forward the
+        # worker's own fixed-prefix stage-timing lines (see
+        # _forward_stage_timing_lines) — every other line a worker's
+        # stderr could carry (e.g. a traceback with a source path) is
+        # still never logged or surfaced, only those exact lines are.
+        stderr=asyncio.subprocess.PIPE,
     )
 
     try:
-        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
     except TimeoutError:
         elapsed_ms = int((time.monotonic() - started_at) * 1000)
         logger.warning(
@@ -1066,6 +1100,7 @@ async def _run_worker_subprocess(
             "exit_code": process.returncode,
         },
     )
+    _forward_stage_timing_lines(stderr, job_id=job_id, tool_slug=tool_slug)
     if process.returncode != 0:
         raise ConversionSubprocessError(
             f"Conversion subprocess exited with code {process.returncode}."

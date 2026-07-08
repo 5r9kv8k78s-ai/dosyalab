@@ -311,3 +311,66 @@ async def test_process_isolation_logs_never_contain_source_path_or_filename(
         rendered = record.getMessage() + " " + " ".join(str(v) for v in vars(record).values())
         for value in forbidden:
             assert value not in rendered
+
+
+# ---------------------------------------------------------------------------
+# 10. pdf2docx stage-timing instrumentation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pdf_to_docx_stage_timings_are_logged_for_a_real_conversion(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The worker's own stage-timing lines (see pdf_to_docx_worker.py) must
+    reach the parent's structured logger as convert.pdf_to_docx_stage
+    events, one per pdf2docx stage (load_pages/parse_document/parse_pages/
+    make_docx) — real, existing pdf2docx progress markers, not invented
+    checkpoints (verified directly against the installed pdf2docx source).
+    """
+    source_path = _make_real_pdf(tmp_path)
+    job = job_store.create(
+        module_slug=PDF_TO_DOCX_SLUG, source_path=source_path, download_filename="source.docx"
+    )
+    settings = Settings(convert_output_dir=tmp_path / "outputs")
+
+    with caplog.at_level(logging.INFO, logger="app.services.conversion"):
+        await run_conversion_job(job.id, settings)
+
+    updated = job_store.get(job.id)
+    assert updated is not None
+    assert updated.status == JobStatus.COMPLETED
+
+    stage_records = [r for r in caplog.records if r.msg == "convert.pdf_to_docx_stage"]
+    stages = {r.stage for r in stage_records}
+    assert stages == {"load_pages", "parse_document", "parse_pages", "make_docx"}
+    for record in stage_records:
+        assert record.job_id == job.id
+        assert record.tool_slug == PDF_TO_DOCX_SLUG
+        assert isinstance(record.duration_ms, int)
+        assert record.duration_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_pdf_to_docx_stage_timing_logs_never_contain_source_path_or_filename(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    source_path = _make_real_pdf(tmp_path, name="a-very-identifiable-stage-name.pdf")
+    job = job_store.create(
+        module_slug=PDF_TO_DOCX_SLUG,
+        source_path=source_path,
+        download_filename="a-very-identifiable-stage-name.docx",
+    )
+    settings = Settings(convert_output_dir=tmp_path / "outputs")
+
+    with caplog.at_level(logging.INFO, logger="app.services.conversion"):
+        await run_conversion_job(job.id, settings)
+
+    stage_records = [r for r in caplog.records if r.msg == "convert.pdf_to_docx_stage"]
+    assert stage_records  # sanity: the thing under test actually happened
+
+    forbidden = (str(source_path), source_path.name, job.download_filename)
+    for record in stage_records:
+        rendered = " ".join(str(v) for v in vars(record).values())
+        for value in forbidden:
+            assert value not in rendered
