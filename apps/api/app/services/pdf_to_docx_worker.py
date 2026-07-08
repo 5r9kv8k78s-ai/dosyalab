@@ -23,6 +23,14 @@ logging a fixed "[N/4] ..." line via the bare `logging` module — verified
 directly against the installed pdf2docx==0.5.8 source) — not invented
 checkpoints, and `convert()` itself is still called exactly as before, so
 conversion behavior is unchanged.
+
+Each stage's line is printed and flushed the moment the *next* stage
+begins (not batched up and printed only after the whole conversion
+finishes) — a process killed by the parent on timeout, mid-conversion,
+never reaches any "after convert() returns/raises" code at all, so
+deferring every line to that point would mean a job that times out
+produces no stage output whatsoever, no matter how promptly the parent
+reads its stderr.
 """
 
 import logging
@@ -46,39 +54,50 @@ _STAGE_MARKERS = (
 )
 
 
+def _emit_stage_line(stage: str, duration_ms: int) -> None:
+    # flush=True regardless of whether stderr would default to line- or
+    # block-buffered when redirected to a pipe (as it always is here) —
+    # this must reach the OS pipe the instant it's printed, not whenever
+    # Python's own io buffering next decides to write it out.
+    print(f"{_STAGE_PREFIX} stage={stage} duration_ms={duration_ms}", file=sys.stderr, flush=True)
+
+
 class _StageTimingHandler(logging.Handler):
-    """Notes, per pdf2docx stage marker, how many ms had elapsed (since
-    `start_time`) when that stage began — ignores every other log record
-    pdf2docx emits (per-page progress, "Start to convert <path>", error
-    text), never storing or forwarding their content.
+    """Prints one safe, fixed-prefix stage-timing line to stderr *as soon
+    as the next stage begins* — ignores every other log record pdf2docx
+    emits (per-page progress, "Start to convert <path>", error text),
+    never storing or forwarding their content.
     """
 
     def __init__(self, start_time: float) -> None:
         super().__init__(level=logging.INFO)
         self._start_time = start_time
-        self.stage_start_ms: dict[str, int] = {}
+        self._stage_start_ms: dict[str, int] = {}
+        self._last_stage: str | None = None
 
     def emit(self, record: logging.LogRecord) -> None:
         message = record.getMessage()
         for marker, stage in _STAGE_MARKERS:
-            if marker in message and stage not in self.stage_start_ms:
-                self.stage_start_ms[stage] = int((time.perf_counter() - self._start_time) * 1000)
-                return
+            if marker not in message or stage in self._stage_start_ms:
+                continue
+            now_ms = int((time.perf_counter() - self._start_time) * 1000)
+            self._stage_start_ms[stage] = now_ms
+            if self._last_stage is not None:
+                _emit_stage_line(self._last_stage, now_ms - self._stage_start_ms[self._last_stage])
+            self._last_stage = stage
+            return
 
-
-def _print_stage_timings(stage_start_ms: dict[str, int], start_time: float) -> None:
-    """Prints one safe, fixed-prefix line per stage that actually started,
-    to stderr — a stage that never started (e.g. a crash before reaching
-    it) gets no line at all, never a fabricated duration."""
-    total_ms = int((time.perf_counter() - start_time) * 1000)
-    stage_names = [stage for _, stage in _STAGE_MARKERS]
-    for i, stage in enumerate(stage_names):
-        if stage not in stage_start_ms:
-            continue
-        next_stage = stage_names[i + 1] if i + 1 < len(stage_names) else None
-        end_ms = stage_start_ms.get(next_stage, total_ms) if next_stage else total_ms
-        duration_ms = end_ms - stage_start_ms[stage]
-        print(f"{_STAGE_PREFIX} stage={stage} duration_ms={duration_ms}", file=sys.stderr)
+    def flush_final_stage(self) -> None:
+        """Emits the duration of the last stage reached — the one
+        `emit()` never got to close out, because either it's genuinely
+        the last stage (make_docx) or the conversion raised partway
+        through it. A stage that never started at all gets no line ever,
+        never a fabricated duration. Safe to call more than once."""
+        if self._last_stage is None:
+            return
+        total_ms = int((time.perf_counter() - self._start_time) * 1000)
+        _emit_stage_line(self._last_stage, total_ms - self._stage_start_ms[self._last_stage])
+        self._last_stage = None
 
 
 def main(argv: list[str]) -> int:
@@ -97,12 +116,12 @@ def main(argv: list[str]) -> int:
     try:
         output_path = PdfToDocxConverter().convert(source_path, destination_dir)
     except Exception:
-        _print_stage_timings(handler.stage_start_ms, start_time)
+        handler.flush_final_stage()
         return 1
     finally:
         root_logger.removeHandler(handler)
 
-    _print_stage_timings(handler.stage_start_ms, start_time)
+    handler.flush_final_stage()
     print(str(output_path))
     return 0
 
