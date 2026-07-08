@@ -2,9 +2,9 @@ import logging
 from pathlib import Path
 
 import fitz
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
-from app.modules.converter.base import ConversionModule
+from app.modules.converter.base import ConversionModule, VerificationResult
 from app.modules.converter.registry import register_converter
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,30 @@ class PdfToXlsxConverter(ConversionModule):
             extra={"output": str(output_path), "tables_written": tables_written},
         )
         return output_path
+
+    def verify(self, output_path: Path) -> VerificationResult:
+        """The `tables_written == 0` check in `convert()` above already
+        guarantees at least one non-empty worksheet before a file is ever
+        saved (an empty workbook can't be saved at all), so this is
+        deliberately NOT a re-implementation of that same "did we find any
+        tables" business rule — it's an independent structural check of the
+        actual bytes written to disk: is this a valid ZIP/XLSX container
+        that openpyxl can still open, with at least one worksheet in it.
+        Catches the on-disk file itself being corrupt or truncated, a
+        different failure mode than "no tables found".
+        """
+        if not output_path.exists():
+            return VerificationResult(ok=False, reason="output_missing")
+        try:
+            workbook = load_workbook(output_path, read_only=True)
+        except Exception:
+            return VerificationResult(ok=False, reason="invalid_xlsx")
+        try:
+            if not workbook.sheetnames:
+                return VerificationResult(ok=False, reason="no_worksheets")
+        finally:
+            workbook.close()
+        return VerificationResult(ok=True)
 
 
 register_converter(PdfToXlsxConverter())

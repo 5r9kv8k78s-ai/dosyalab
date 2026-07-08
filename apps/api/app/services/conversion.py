@@ -1231,6 +1231,32 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
                 "elapsed_ms": int((time.monotonic() - convert_started_at) * 1000),
             },
         )
+        # Runs for every tool (the base ConversionModule default is an
+        # unconditional VerificationResult(ok=True), so the 15 tools with no
+        # real verifier yet are unaffected). A verify() that raises is
+        # deliberately NOT caught here — it falls through to the same
+        # `except Exception:` below as any other conversion failure, so an
+        # unexpected bug inside a verifier fails the job exactly like a bug
+        # inside convert() would, with no separate code path to keep in sync.
+        verification_started_at = time.monotonic()
+        verification_result = converter.verify(output_path)
+        logger.info(
+            "convert.verification_result",
+            extra={
+                "job_id": job_id,
+                "tool_slug": job.module_slug,
+                "verification_ok": verification_result.ok,
+                "verification_reason": verification_result.reason,
+                "verification_duration_ms": int(
+                    (time.monotonic() - verification_started_at) * 1000
+                ),
+            },
+        )
+        if not verification_result.ok:
+            # Reuses the exact same generic FAILED path as any other
+            # conversion failure below — no new error_code, no failure
+            # taxonomy this phase (see V2-2).
+            raise RuntimeError("Conversion output failed verification")
         job_store.update(job_id, status=JobStatus.COMPLETED, progress=100, output_path=output_path)
         logger.info("convert.job_completed", extra={"job_id": job_id})
         # record_operations_event is a synchronous (blocking) Postgres write
