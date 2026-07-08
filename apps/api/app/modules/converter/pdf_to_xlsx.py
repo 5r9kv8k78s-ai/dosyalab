@@ -10,6 +10,19 @@ from app.modules.converter.registry import register_converter
 logger = logging.getLogger(__name__)
 
 
+def _normalize_cell_value(value: object) -> object:
+    """Collapses embedded newlines/tabs/repeated whitespace from a wrapped
+    PDF label (e.g. `"X-axis\\nvalue"` -> `"X-axis value"`, verified against
+    the real sample.pdf fixture's page 5 table) into a single space, and
+    strips leading/trailing whitespace. Never touches a non-string value or
+    an already-empty string — this only cleans up text within a cell, it
+    never adds, removes, or reorders any cell.
+    """
+    if isinstance(value, str) and value.strip():
+        return " ".join(value.split())
+    return value
+
+
 class PdfToXlsxConverter(ConversionModule):
     """Converts PDF documents to XLSX by extracting tables via PyMuPDF's
     built-in table finder (`Page.find_tables()`, available since PyMuPDF
@@ -49,7 +62,11 @@ class PdfToXlsxConverter(ConversionModule):
                 for table in tables:
                     for row in table.extract():
                         for col_index, value in enumerate(row, start=1):
-                            sheet.cell(row=row_cursor, column=col_index, value=value)
+                            sheet.cell(
+                                row=row_cursor,
+                                column=col_index,
+                                value=_normalize_cell_value(value),
+                            )
                         row_cursor += 1
                     row_cursor += 1  # blank separator row between tables on the same page
                     tables_written += 1
