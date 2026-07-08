@@ -21,6 +21,7 @@ from app.services.docx_validation import (
 )
 from app.services.execution_mode import ExecutionMode
 from app.services.execution_runtime import execute_conversion
+from app.services.failure_taxonomy import VERIFICATION_REASON_TO_FAILURE_CODE, FailureCode
 from app.services.image_validation import (
     ImageValidationError,
     inspect_image,
@@ -989,7 +990,17 @@ _TERMINATE_GRACE_PERIOD_SECONDS = 5
 
 class ConversionSubprocessError(Exception):
     """A conversion subprocess (see `_run_worker_subprocess`) exited with a
-    non-zero code, or was killed after exceeding its timeout."""
+    non-zero code, or was killed after exceeding its timeout.
+
+    `timed_out` distinguishes which of those two happened — used by
+    `_classify_failure` to map a timeout to `FailureCode.CONVERSION_TIMEOUT`
+    and a genuine non-zero exit to `FailureCode.ENGINE_FAILURE`, without
+    resorting to matching on this exception's message text.
+    """
+
+    def __init__(self, message: str, *, timed_out: bool = False) -> None:
+        super().__init__(message)
+        self.timed_out = timed_out
 
 
 async def _run_worker_subprocess(
@@ -1042,7 +1053,7 @@ async def _run_worker_subprocess(
         )
         await _terminate_then_kill(process, job_id=job_id, tool_slug=tool_slug)
         raise ConversionSubprocessError(
-            f"Conversion subprocess exceeded {timeout_seconds}s timeout."
+            f"Conversion subprocess exceeded {timeout_seconds}s timeout.", timed_out=True
         ) from None
 
     elapsed_ms = int((time.monotonic() - started_at) * 1000)
@@ -1141,6 +1152,52 @@ def _build_spec(module_slug: str, settings: Settings) -> ConversionSpec:
     return ConversionSpec(slug=module_slug, execution_mode=ExecutionMode.THREAD)
 
 
+class _VerificationFailedError(Exception):
+    """Raised when `converter.verify()` deliberately returned
+    `VerificationResult(ok=False, ...)` — carries the `reason` string so
+    `_classify_failure` can map it to a `FailureCode` via
+    `VERIFICATION_REASON_TO_FAILURE_CODE`. Internal only: the user-facing
+    job.error message stays the same generic string regardless of `reason`.
+    """
+
+    def __init__(self, reason: str | None) -> None:
+        super().__init__("Conversion output failed verification")
+        self.reason = reason
+
+
+class _VerificationRaisedError(Exception):
+    """Raised when `converter.verify()` itself raised an unexpected
+    exception (a bug in the verifier, not a deliberate rejection) — kept
+    distinct from `_VerificationFailedError` so `_classify_failure` can
+    tell the two apart without inspecting `__cause__`."""
+
+
+def _classify_failure(exc: BaseException) -> FailureCode:
+    """Maps an exception caught by `run_conversion_job`'s outer handler to
+    an internal `FailureCode` (see app/services/failure_taxonomy.py) —
+    the single place this classification happens, driven entirely by
+    exception identity/attributes already available at this boundary,
+    never by matching on message text.
+    """
+    if isinstance(exc, TimeoutError):
+        # Only ever reaches here from a THREAD-mode timeout — PROCESS
+        # mode's own timeout is already a ConversionSubprocessError with
+        # timed_out=True by the time it gets this far (see below).
+        return FailureCode.CONVERSION_TIMEOUT
+    if isinstance(exc, ConversionSubprocessError):
+        return FailureCode.CONVERSION_TIMEOUT if exc.timed_out else FailureCode.ENGINE_FAILURE
+    if isinstance(exc, _VerificationFailedError):
+        return VERIFICATION_REASON_TO_FAILURE_CODE.get(exc.reason, FailureCode.OUTPUT_INVALID)
+    if isinstance(exc, _VerificationRaisedError):
+        # Fail-closed: a verifier that couldn't even complete its check is
+        # treated as "output not confirmed valid", not as an engine failure
+        # (the engine/convert() call already succeeded by this point).
+        return FailureCode.OUTPUT_INVALID
+    # Anything else was raised by execute_conversion/converter.convert()
+    # itself — a real engine-layer failure.
+    return FailureCode.ENGINE_FAILURE
+
+
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
     """Run the registered converter for a job in a worker thread, tracking
     progress — and the one shared point every tool's actual conversion
@@ -1234,12 +1291,19 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         # Runs for every tool (the base ConversionModule default is an
         # unconditional VerificationResult(ok=True), so the 15 tools with no
         # real verifier yet are unaffected). A verify() that raises is
-        # deliberately NOT caught here — it falls through to the same
-        # `except Exception:` below as any other conversion failure, so an
-        # unexpected bug inside a verifier fails the job exactly like a bug
-        # inside convert() would, with no separate code path to keep in sync.
+        # wrapped in _VerificationRaisedError (distinct from a deliberate
+        # ok=False, wrapped in _VerificationFailedError below) purely so
+        # _classify_failure can tell the two apart — both still fall
+        # through to the exact same `except Exception:` FAILED handling.
         verification_started_at = time.monotonic()
-        verification_result = converter.verify(output_path)
+        try:
+            verification_result = converter.verify(output_path)
+        except Exception as verify_exc:
+            logger.exception(
+                "convert.verification_raised",
+                extra={"job_id": job_id, "tool_slug": job.module_slug},
+            )
+            raise _VerificationRaisedError() from verify_exc
         logger.info(
             "convert.verification_result",
             extra={
@@ -1254,9 +1318,9 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
         )
         if not verification_result.ok:
             # Reuses the exact same generic FAILED path as any other
-            # conversion failure below — no new error_code, no failure
-            # taxonomy this phase (see V2-2).
-            raise RuntimeError("Conversion output failed verification")
+            # conversion failure below — see _classify_failure for how
+            # `reason` becomes an internal FailureCode.
+            raise _VerificationFailedError(verification_result.reason)
         job_store.update(job_id, status=JobStatus.COMPLETED, progress=100, output_path=output_path)
         logger.info("convert.job_completed", extra={"job_id": job_id})
         # record_operations_event is a synchronous (blocking) Postgres write
@@ -1279,13 +1343,21 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
             error_code=None,
             settings=settings,
         )
-    except Exception:
+    except Exception as exc:
+        # Internal-only classification (see app/services/failure_taxonomy.py)
+        # — never surfaced to the user; the generic `error` message below is
+        # unchanged, and record_operations_event's own error_code stays
+        # "conversion_failed" exactly as before (a separate, already-closed
+        # analytics contract — see failure_taxonomy.py's docstring for why
+        # the two are deliberately not merged).
+        failure_code = _classify_failure(exc)
         job_store.update(
             job_id,
             status=JobStatus.FAILED,
             error="Conversion failed. The file may use unsupported features — try a different one.",
+            error_code=failure_code,
         )
-        logger.exception("convert.job_failed", extra={"job_id": job_id})
+        logger.exception("convert.job_failed", extra={"job_id": job_id, "error_code": failure_code})
         await asyncio.to_thread(
             record_operations_event,
             event_type="conversion",

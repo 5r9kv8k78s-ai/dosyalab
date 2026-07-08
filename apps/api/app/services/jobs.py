@@ -23,6 +23,11 @@ class ConversionJob:
     progress: int = 0
     output_path: Path | None = None
     error: str | None = None
+    # Internal failure classification (see app/services/failure_taxonomy.py)
+    # — never returned by the API (see app/schemas/convert.py's
+    # ConvertJobStatus, which has no field for it). `error` above remains
+    # the only user-facing message, unchanged.
+    error_code: str | None = None
     # How many input files this job started from (1 for every single-file
     # tool; the real count for merge-pdf/images-to-pdf) — kept only for the
     # operations-events summary (see services/operations_events.py), never
