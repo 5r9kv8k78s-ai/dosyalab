@@ -11,13 +11,16 @@ import fitz
 from fastapi import UploadFile
 
 from app.core.config import Settings
-from app.modules.converter import ConversionModule, get_converter
+from app.modules.converter import get_converter
+from app.services.conversion_spec import ConversionSpec
 from app.services.docx_validation import (
     DocxValidationError,
     inspect_docx,
     validate_docx_extension,
     validate_docx_size,
 )
+from app.services.execution_mode import ExecutionMode
+from app.services.execution_runtime import execute_conversion
 from app.services.image_validation import (
     ImageValidationError,
     inspect_image,
@@ -1103,32 +1106,39 @@ async def _convert_pdf_to_docx_isolated(
     return Path(stdout_text)
 
 
-async def _convert_with_timeout(
-    converter: ConversionModule, job: ConversionJob, settings: Settings, timeout_seconds: float
-) -> Path:
-    """Runs `converter.convert` in a worker thread with a hard ceiling — for
-    converters where a real OS process (see `_convert_pdf_to_docx_isolated`)
-    was judged unnecessary, but an unbounded worker thread still isn't
-    acceptable. Unlike a subprocess, the underlying thread cannot actually
-    be killed and keeps running after this raises; the point is only to
-    release the job as FAILED promptly instead of leaving it in PROCESSING
-    forever, not to reclaim the thread pool slot early.
+def _build_spec(module_slug: str, settings: Settings) -> ConversionSpec:
+    """Resolves the given tool's `ConversionSpec` — the V2-0 replacement
+    for the `module_slug`-based if/elif chain that used to decide
+    execution strategy directly inside `run_conversion_job`.
+
+    Deliberately built fresh on every call rather than as a module-level
+    constant: `process_runner=_convert_pdf_to_docx_isolated` below is a
+    plain name lookup in this module's own global namespace, resolved at
+    call time — exactly what lets a test's `monkeypatch.setattr(
+    conversion_module, "_convert_pdf_to_docx_isolated", ...)` keep working
+    unchanged (a spec built once at import time would have captured the
+    original function object instead, and a later monkeypatch on the
+    module attribute would have no effect on it). The same applies to
+    `settings`, which already varies per call/per test today.
     """
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(converter.convert, job.source_path, settings.convert_output_dir),
-            timeout=timeout_seconds,
+    if module_slug == PDF_TO_DOCX_SLUG:
+        return ConversionSpec(
+            slug=PDF_TO_DOCX_SLUG,
+            execution_mode=ExecutionMode.PROCESS,
+            timeout_seconds=settings.pdf_to_docx_conversion_timeout_seconds,
+            process_runner=_convert_pdf_to_docx_isolated,
         )
-    except TimeoutError:
-        logger.warning(
-            "convert.thread_timeout",
-            extra={
-                "job_id": job.id,
-                "tool_slug": job.module_slug,
-                "timeout_seconds": timeout_seconds,
-            },
+    if module_slug == DOCX_TO_PDF_SLUG:
+        return ConversionSpec(
+            slug=DOCX_TO_PDF_SLUG,
+            execution_mode=ExecutionMode.THREAD,
+            timeout_seconds=settings.docx_to_pdf_conversion_timeout_seconds,
         )
-        raise
+    # Every other tool (pdf-to-xlsx included — deliberately left exactly as
+    # it was; moving it to PROCESS mode is a separate, later phase) keeps
+    # its current, unbounded worker-thread behavior: THREAD mode with no
+    # timeout at all.
+    return ConversionSpec(slug=module_slug, execution_mode=ExecutionMode.THREAD)
 
 
 async def run_conversion_job(job_id: str, settings: Settings) -> None:
@@ -1177,28 +1187,33 @@ async def run_conversion_job(job_id: str, settings: Settings) -> None:
                     },
                 )
         logger.info("convert.convert_started", extra=log_extra)
+        # Execution strategy (thread/process/timeout) is now entirely a
+        # function of this tool's ConversionSpec — run_conversion_job no
+        # longer branches on module_slug to decide *how* to run the
+        # conversion, only *whether it succeeded* (see except clauses
+        # below and the rest of this function).
+        spec = _build_spec(job.module_slug, settings)
         try:
-            if job.module_slug == PDF_TO_DOCX_SLUG:
-                # Killable process isolation + hard timeout — see
-                # _convert_pdf_to_docx_isolated. Every other converter still
-                # runs via the plain worker-thread path below, unchanged.
-                output_path = await _convert_pdf_to_docx_isolated(
-                    job_id,
-                    job.source_path,
-                    settings.convert_output_dir,
-                    settings.pdf_to_docx_conversion_timeout_seconds,
+            output_path = await execute_conversion(
+                spec, converter, job.source_path, settings.convert_output_dir, job_id=job_id
+            )
+        except Exception as exc:
+            # A bare TimeoutError only ever reaches here from a THREAD-mode
+            # timeout — PROCESS mode's own timeout (see
+            # _run_worker_subprocess) is already converted into a
+            # ConversionSubprocessError, with its own convert.process_timeout
+            # log, before it ever gets this far. Logged in addition to (not
+            # instead of) convert.convert_raised below, matching this
+            # tool's pre-V2-0 behavior exactly.
+            if isinstance(exc, TimeoutError):
+                logger.warning(
+                    "convert.thread_timeout",
+                    extra={
+                        "job_id": job_id,
+                        "tool_slug": job.module_slug,
+                        "timeout_seconds": spec.timeout_seconds,
+                    },
                 )
-            elif job.module_slug == DOCX_TO_PDF_SLUG:
-                # xhtml2pdf (pure-Python HTML/CSS rendering) has no bound on
-                # how long it can run — see _convert_with_timeout.
-                output_path = await _convert_with_timeout(
-                    converter, job, settings, settings.docx_to_pdf_conversion_timeout_seconds
-                )
-            else:
-                output_path = await asyncio.to_thread(
-                    converter.convert, job.source_path, settings.convert_output_dir
-                )
-        except Exception:
             logger.exception(
                 "convert.convert_raised",
                 extra={
